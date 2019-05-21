@@ -114,13 +114,8 @@ class GraphBuilder(ModelDescBase):
 
         """
 
-        # print(x_fake)
-        # print(x_real)
-        # x_fake = np.array(x_fake)
-        # x_real = np.array(x_real)
         x_fake = tf.concat(x_fake, axis=1)
         x_real = tf.concat(x_real, axis=1)
-        print(x_fake)
 
         with tf.name_scope("GAN_loss"):
             score_real = tf.sigmoid(logits_real)
@@ -567,7 +562,7 @@ class GraphBuilder(ModelDescBase):
             discrim_pos = self.discriminator(vecs_pos)
             discrim_neg = self.discriminator(vecs_gen)
 
-        self.build_losses(discrim_pos, discrim_neg, vecs_pos, vecs_gen, extra_g=KL, l2_norm=self.l2norm)
+        self.build_losses(discrim_pos, discrim_neg, vecs_gen, vecs_pos, extra_g=KL, l2_norm=self.l2norm)
         self.collect_variables()
 
     def _get_optimizer(self):
