@@ -94,7 +94,8 @@ class GraphBuilder(ModelDescBase):
         if not (self.g_vars or self.d_vars):
             raise ValueError('There are no variables defined in some of the given scopes')
 
-    def build_losses(self, logits_real, logits_fake, extra_g=0, l2_norm=0.00001):
+    def build_losses(self, logits_real, logits_fake, x_fake, x_real,
+                     extra_g=0, l2_norm=0.00001):
         r"""D and G play two-player minimax game with value function :math:`V(G,D)`.
 
         .. math::
@@ -112,6 +113,15 @@ class GraphBuilder(ModelDescBase):
             None
 
         """
+
+        # print(x_fake)
+        # print(x_real)
+        # x_fake = np.array(x_fake)
+        # x_real = np.array(x_real)
+        x_fake = tf.concat(x_fake, axis=1)
+        x_real = tf.concat(x_real, axis=1)
+        print(x_fake)
+
         with tf.name_scope("GAN_loss"):
             score_real = tf.sigmoid(logits_real)
             score_fake = tf.sigmoid(logits_fake)
@@ -144,6 +154,19 @@ class GraphBuilder(ModelDescBase):
                         tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, "discrim"))
 
                 self.d_loss = tf.identity(d_loss, name='loss')
+                self.epsilon = tf.random_uniform(
+                    shape=[self.batch_size, 1, 1, 1],
+                    minval=0.,
+                    maxval=1.)
+
+                X_hat = x_real + self.epsilon * (x_fake - x_real)
+                D_X_hat = self.discriminator(X_hat, reuse=True)
+                grad_D_X_hat = tf.gradients(D_X_hat, [X_hat])[0]
+                red_idx = range(1, X_hat.shape.ndims)
+                slopes = tf.sqrt(tf.reduce_sum(tf.square(grad_D_X_hat), reduction_indices=red_idx))
+                gradient_penalty = tf.reduce_mean((slopes - 1.) ** 2)
+                self.d_loss = tf.reduce_mean(logits_fake) - tf.reduce_mean(logits_real)
+                self.d_loss = self.d_loss + 10.0 * gradient_penalty
 
             with tf.name_scope("gen"):
                 g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
@@ -452,6 +475,7 @@ class GraphBuilder(ModelDescBase):
             None
 
         """
+        print(inputs)
         z = tf.random_normal(
             [self.batch_size, self.z_dim], name='z_train')
 
@@ -543,7 +567,7 @@ class GraphBuilder(ModelDescBase):
             discrim_pos = self.discriminator(vecs_pos)
             discrim_neg = self.discriminator(vecs_gen)
 
-        self.build_losses(discrim_pos, discrim_neg, extra_g=KL, l2_norm=self.l2norm)
+        self.build_losses(discrim_pos, discrim_neg, vecs_pos, vecs_gen, extra_g=KL, l2_norm=self.l2norm)
         self.collect_variables()
 
     def _get_optimizer(self):
@@ -596,7 +620,7 @@ class TGANModel:
         self, continuous_columns, output='output', gpu=None, max_epoch=5, steps_per_epoch=10000,
         save_checkpoints=True, restore_session=True, batch_size=200, z_dim=200, noise=0.2,
         l2norm=0.00001, learning_rate=0.001, num_gen_rnn=100, num_gen_feature=100,
-        num_dis_layers=1, num_dis_hidden=100, optimizer='AdamOptimizer',
+        num_dis_layers=1, num_dis_hidden=100, optimizer='AdamOptimizer', experiment=None
     ):
         """Initialize object."""
         # Output
@@ -623,6 +647,7 @@ class TGANModel:
         self.num_dis_layers = num_dis_layers
         self.num_dis_hidden = num_dis_hidden
         self.optimizer = optimizer
+        self.experiment = experiment
 
         if gpu:
             os.environ['CUDA_VISIBLE_DEVICES'] = gpu
@@ -676,6 +701,7 @@ class TGANModel:
             None
 
         """
+
         self.preprocessor = Preprocessor(continuous_columns=self.continuous_columns)
         data = self.preprocessor.fit_transform(data)
         self.metadata = self.preprocessor.metadata
