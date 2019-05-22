@@ -18,7 +18,7 @@ import numpy as np
 import tensorflow as tf
 from tensorpack import (
     BatchData, BatchNorm, Dropout, FullyConnected, InputDesc, ModelDescBase, ModelSaver,
-    PredictConfig, QueueInput, SaverRestore, SimpleDatasetPredictor, logger)
+    PredictConfig, QueueInput, SaverRestore, SimpleDatasetPredictor, logger, LayerNorm)
 from tensorpack.tfutils.scope_utils import auto_reuse_variable_scope
 from tensorpack.tfutils.summary import add_moving_summary
 from tensorpack.utils.argtools import memoized
@@ -122,60 +122,66 @@ class GraphBuilder(ModelDescBase):
             score_fake = tf.sigmoid(logits_fake)
             tf.summary.histogram('score-real', score_real)
             tf.summary.histogram('score-fake', score_fake)
+            tf.summary.histogram('logits_real', logits_real)
+            tf.summary.histogram('logits_fake', logits_fake)
 
             with tf.name_scope("discrim"):
-                d_loss_pos = tf.reduce_mean(
-                    tf.nn.sigmoid_cross_entropy_with_logits(
-                        logits=logits_real,
-                        labels=tf.ones_like(logits_real)) * 0.7 + tf.random_uniform(
-                            tf.shape(logits_real),
-                            maxval=0.3
-                    ),
-                    name='loss_real'
-                )
+                #                 d_loss_pos = tf.reduce_mean(
+                #                     tf.nn.sigmoid_cross_entropy_with_logits(
+                #                         logits=logits_real,
+                #                         labels=tf.ones_like(logits_real)) * 0.7 + tf.random_uniform(
+                #                             tf.shape(logits_real),
+                #                             maxval=0.3
+                #                     ),
+                #                     name='loss_real'
+                #                 )
 
-                d_loss_neg = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-                    logits=logits_fake, labels=tf.zeros_like(logits_fake)), name='loss_fake')
+                #                 d_loss_neg = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                #                     logits=logits_fake, labels=tf.zeros_like(logits_fake)), name='loss_fake')
 
-                d_pos_acc = tf.reduce_mean(
-                    tf.cast(score_real > 0.5, tf.float32), name='accuracy_real')
+                #                 d_pos_acc = tf.reduce_mean(
+                #                     tf.cast(score_real > 0.5, tf.float32), name='accuracy_real')
 
-                d_neg_acc = tf.reduce_mean(
-                    tf.cast(score_fake < 0.5, tf.float32), name='accuracy_fake')
+                #                 d_neg_acc = tf.reduce_mean(
+                #                     tf.cast(score_fake < 0.5, tf.float32), name='accuracy_fake')
 
-                d_loss = 0.5 * d_loss_pos + 0.5 * d_loss_neg + \
-                    tf.contrib.layers.apply_regularization(
-                        tf.contrib.layers.l2_regularizer(l2_norm),
-                        tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, "discrim"))
+                #                 d_loss = 0.5 * d_loss_pos + 0.5 * d_loss_neg + \
+                #                     tf.contrib.layers.apply_regularization(
+                #                         tf.contrib.layers.l2_regularizer(l2_norm),
+                #                         tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, "discrim"))
+                #                 self.d_loss = tf.identity(d_loss, name='loss')
 
-                self.d_loss = tf.identity(d_loss, name='loss')
                 self.epsilon = tf.random_uniform(
                     shape=[self.batch_size, 1, 1, 1],
                     minval=0.,
                     maxval=1.)
 
                 X_hat = x_real + self.epsilon * (x_fake - x_real)
-                D_X_hat = self.discriminator(X_hat, reuse=True)
+                D_X_hat = self.discriminator(X_hat)
                 grad_D_X_hat = tf.gradients(D_X_hat, [X_hat])[0]
-                red_idx = range(1, X_hat.shape.ndims)
+                red_idx = list(range(1, X_hat.shape.ndims))
                 slopes = tf.sqrt(tf.reduce_sum(tf.square(grad_D_X_hat), reduction_indices=red_idx))
-                gradient_penalty = tf.reduce_mean((slopes - 1.) ** 2)
+                gradient_penalty = tf.identity(tf.reduce_mean((slopes - 1.) ** 2), name='GP')
                 self.d_loss = tf.reduce_mean(logits_fake) - tf.reduce_mean(logits_real)
                 self.d_loss = self.d_loss + 10.0 * gradient_penalty
 
             with tf.name_scope("gen"):
-                g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-                    logits=logits_fake, labels=tf.ones_like(logits_fake))) + \
-                    tf.contrib.layers.apply_regularization(
-                        tf.contrib.layers.l2_regularizer(l2_norm),
-                        tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'gen'))
+                #                 g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                #                     logits=logits_fake, labels=tf.ones_like(logits_fake))) + \
+                #                     tf.contrib.layers.apply_regularization(
+                #                         tf.contrib.layers.l2_regularizer(l2_norm),
+                #                         tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'gen'))
 
-                g_loss = tf.identity(g_loss, name='loss')
-                extra_g = tf.identity(extra_g, name='klloss')
-                self.g_loss = tf.identity(g_loss + extra_g, name='final-g-loss')
+                #                 g_loss = tf.identity(g_loss, name='loss')
+                #                 extra_g = tf.identity(extra_g, name='klloss')
+                #                 self.g_loss = tf.identity(g_loss + extra_g, name='final-g-loss')
+                self.g_loss = -tf.reduce_mean(logits_fake)
 
-            add_moving_summary(
-                g_loss, extra_g, self.g_loss, self.d_loss, d_pos_acc, d_neg_acc, decay=0.)
+            self.d_loss_sum = tf.summary.scalar("Discriminator_loss", self.d_loss)
+            self.g_loss_sum = tf.summary.scalar("Generator_loss", self.g_loss)
+            self.gp_sum = tf.summary.scalar("Gradient_penalty", gradient_penalty)
+
+            add_moving_summary(self.g_loss, self.d_loss)
 
     @memoized
     def get_optimizer(self):
@@ -440,7 +446,7 @@ class GraphBuilder(ModelDescBase):
                     logits = FullyConnected('fc', logits, self.num_dis_hidden, nl=tf.identity)
 
                 logits = tf.concat([logits, self.batch_diversity(logits)], axis=1)
-                logits = BatchNorm('bn', logits, center=True, scale=False)
+                logits = LayerNorm('ln', logits)
                 logits = Dropout(logits)
                 logits = tf.nn.leaky_relu(logits)
 
