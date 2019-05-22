@@ -448,7 +448,7 @@ class GraphBuilder(ModelDescBase):
                 logits = tf.concat([logits, self.batch_diversity(logits)], axis=1)
                 logits = LayerNorm('ln', logits)
                 logits = Dropout(logits)
-                logits = tf.nn.leaky_relu(logits)
+                # logits = tf.nn.leaky_relu(logits)
 
         return FullyConnected('dis_fc_top', logits, 1, nl=tf.identity)
 
