@@ -1,0 +1,9 @@
+{
+    "name": "abn_trans",
+    "num_random_search": 3,
+    "train_csv": "../data/abn_trans/abn_trans_cat.csv",
+    "continuous_cols": [0, 1, 2, 3, 5],
+    "epoch": 10,
+    "steps_per_epoch": 10000,
+    "sample_rows": 100000
+}
