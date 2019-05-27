@@ -24,7 +24,7 @@ from tensorpack.tfutils.summary import add_moving_summary
 from tensorpack.utils.argtools import memoized
 
 from tgan.data import Preprocessor, RandomZData, TGANDataFlow
-from tgan.trainer import GANTrainer
+from tgan.trainer import GANTrainer, SeparateGANTrainer
 
 TUNABLE_VARIABLES = {
     'batch_size': [50, 100, 200],
@@ -476,7 +476,6 @@ class GraphBuilder(ModelDescBase):
             None
 
         """
-        print(inputs)
         z = tf.random_normal(
             [self.batch_size, self.z_dim], name='z_train')
 
@@ -599,7 +598,7 @@ class TGANModel:
             Defaults to :attr:`True`.
         batch_size (int, optional): Size of the batch to feed the model at each step. Defaults to
             :attr:`200`.
-        z_dim (int, optional): Number of dimensions in the noise input for the generator.
+        z_dim (int, optional): Number of dimensions in the noise input for the g.
             Defaults to :attr:`100`.
         noise (float, optional): Upper bound to the gaussian noise added to categorical columns.
             Defaults to :attr:`0.2`.
@@ -712,9 +711,10 @@ class TGANModel:
 
         self.model = self.get_model(training=True)
 
-        trainer = GANTrainer(
+        trainer = SeparateGANTrainer(
             model=self.model,
             input_queue=input_queue,
+            g_period=6,
         )
 
         self.restore_path = os.path.join(self.model_dir, 'checkpoint')

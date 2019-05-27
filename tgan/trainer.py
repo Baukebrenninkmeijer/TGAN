@@ -69,7 +69,7 @@ class SeparateGANTrainer(TowerTrainer):
 
     """
 
-    def __init__(self, input, model, d_period=1, g_period=1):
+    def __init__(self, input_queue, model, d_period=1, g_period=1):
         """Initialize object."""
         super(SeparateGANTrainer, self).__init__()
         self._d_period = int(d_period)
@@ -78,13 +78,13 @@ class SeparateGANTrainer(TowerTrainer):
             raise ValueError('The minimum between d_period and g_period must be 1.')
 
         # Setup input
-        cbs = input.setup(model.get_inputs_desc())
+        cbs = input_queue.setup(model.get_inputs_desc())
         self.register_callback(cbs)
 
         # Build the graph
         self.tower_func = TowerFuncWrapper(model.build_graph, model.get_inputs_desc())
         with TowerContext('', is_training=True):
-            self.tower_func(*input.get_input_tensors())
+            self.tower_func(*input_queue.get_input_tensors())
 
         opt = model.get_optimizer()
         with tf.name_scope('optimize'):
