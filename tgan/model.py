@@ -572,7 +572,7 @@ class GraphBuilder(ModelDescBase):
 
     def _get_optimizer(self):
         if self.optimizer == 'AdamOptimizer':
-            return tf.train.AdamOptimizer(self.learning_rate, 0.5)
+            return tf.train.AdamOptimizer(self.learning_rate, 0, 0.9)
 
         elif self.optimizer == 'AdadeltaOptimizer':
             return tf.train.AdadeltaOptimizer(self.learning_rate, 0.95)
@@ -620,7 +620,7 @@ class TGANModel:
         self, continuous_columns, output='output', gpu=None, max_epoch=5, steps_per_epoch=10000,
         save_checkpoints=True, restore_session=True, batch_size=200, z_dim=200, noise=0.2,
         l2norm=0.00001, learning_rate=0.001, num_gen_rnn=100, num_gen_feature=100,
-        num_dis_layers=1, num_dis_hidden=100, optimizer='AdamOptimizer', experiment=None
+        num_dis_layers=1, num_dis_hidden=100, optimizer='AdamOptimizer', comet_ml_key=None
     ):
         """Initialize object."""
         # Output
@@ -647,11 +647,11 @@ class TGANModel:
         self.num_dis_layers = num_dis_layers
         self.num_dis_hidden = num_dis_hidden
         self.optimizer = optimizer
-        self.experiment = experiment
 
         if gpu:
             os.environ['CUDA_VISIBLE_DEVICES'] = gpu
 
+        self.comet_ml_key = comet_ml_key
         self.gpu = gpu
 
     def get_model(self, training=True):
@@ -711,6 +711,8 @@ class TGANModel:
 
         self.model = self.get_model(training=True)
 
+        from tensorpack.callbacks import CometMLMonitor
+
         trainer = SeparateGANTrainer(
             model=self.model,
             input_queue=input_queue,
@@ -732,6 +734,9 @@ class TGANModel:
         logger.set_logger_dir(self.log_dir, action=action)
 
         callbacks = []
+        if self.comet_ml_key:
+            callbacks.append(CometMLMonitor(tags=['TGAN-WGAN-GP'], api_key=self.comet_ml_key))
+
         if self.save_checkpoints:
             callbacks.append(ModelSaver(checkpoint_dir=self.model_dir))
 
