@@ -8,7 +8,8 @@ tgan = TGANModel(continuous_columns,
                  restore_session=False,  
                  max_epoch=100, 
                  steps_per_epoch=1000, 
-                 batch_size=1000)
+                 batch_size=1000,
+                 comet_ml_key='49HGMPyIKjokHwg2pVOKWTG67')
 tgan.fit(d)
 
 model_path = 'model/berka_wgan_100x1000'

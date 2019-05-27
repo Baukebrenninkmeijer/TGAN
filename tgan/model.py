@@ -15,6 +15,7 @@ import pickle
 import tarfile
 
 import numpy as np
+from tensorpack.callbacks import CometMLMonitor
 import tensorflow as tf
 from tensorpack import (
     BatchData, BatchNorm, Dropout, FullyConnected, InputDesc, ModelDescBase, ModelSaver,
@@ -711,7 +712,6 @@ class TGANModel:
 
         self.model = self.get_model(training=True)
 
-        from tensorpack.callbacks import CometMLMonitor
 
         trainer = SeparateGANTrainer(
             model=self.model,
