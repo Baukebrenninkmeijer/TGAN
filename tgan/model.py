@@ -632,7 +632,7 @@ class TGANModel:
             os.environ['CUDA_VISIBLE_DEVICES'] = gpu
 
         self.comet_ml_key = comet_ml_key
-        self.experiment = Experiment(api_key=comet_ml_key, project_name='tgan-wgan-gp', workspace="baukebrenninkmeijer")
+        self.experiment = Experiment(api_key=comet_ml_key, project_name='tgan-skip-connections', workspace="baukebrenninkmeijer")
         if ds:
             self.experiment.log_dataset_info(ds)
         self.gpu = gpu
