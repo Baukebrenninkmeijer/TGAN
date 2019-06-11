@@ -600,7 +600,7 @@ class TGANModel:
         self, continuous_columns, output='output', gpu=None, max_epoch=5, steps_per_epoch=10000,
         save_checkpoints=True, restore_session=True, batch_size=200, z_dim=200, noise=0.2,
         l2norm=0.00001, learning_rate=0.001, num_gen_rnn=100, num_gen_feature=100,
-        num_dis_layers=1, num_dis_hidden=100, optimizer='AdamOptimizer', comet_ml_key=None, ds=None
+        num_dis_layers=1, num_dis_hidden=100, optimizer='AdamOptimizer', comet_ml_key=None, experiment=None, ds=None
     ):
         """Initialize object."""
         # Output
@@ -631,10 +631,13 @@ class TGANModel:
         if gpu:
             os.environ['CUDA_VISIBLE_DEVICES'] = gpu
 
-        self.comet_ml_key = comet_ml_key
-        self.experiment = Experiment(api_key=comet_ml_key, project_name='tgan-skip-connections', workspace="baukebrenninkmeijer")
-        if ds:
-            self.experiment.log_dataset_info(ds)
+        if experiment is not None:
+            self.experiment = experiment
+        elif comet_ml_key is not None:
+            self.comet_ml_key = comet_ml_key
+            self.experiment = Experiment(api_key=comet_ml_key, project_name='tgan-wgan-gp', workspace="baukebrenninkmeijer")
+        if ds is not None:
+            experiment.log_dataset_info(name=ds)
         self.gpu = gpu
 
     def get_model(self, training=True):
