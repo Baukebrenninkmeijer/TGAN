@@ -15,7 +15,8 @@ import pickle
 import tarfile
 
 import numpy as np
-from tensorpack.callbacks import CometMLMonitor
+from comet_ml import Experiment
+from tensorpack.callbacks import CometMLMonitor, MergeAllSummaries
 import tensorflow as tf
 from tensorpack import (
     BatchData, BatchNorm, Dropout, FullyConnected, InputDesc, ModelDescBase, ModelSaver,
@@ -163,8 +164,8 @@ class GraphBuilder(ModelDescBase):
                 red_idx = list(range(1, X_hat.shape.ndims))
                 slopes = tf.sqrt(tf.reduce_sum(tf.square(grad_D_X_hat), reduction_indices=red_idx))
                 gradient_penalty = tf.identity(tf.reduce_mean((slopes - 1.) ** 2), name='GP')
-                self.d_loss = tf.reduce_mean(logits_fake) - tf.reduce_mean(logits_real)
-                self.d_loss = self.d_loss + 10.0 * gradient_penalty
+                self.d_loss = tf.reduce_mean(logits_real) - tf.reduce_mean(logits_fake)
+                self.d_loss = self.d_loss + 4 * gradient_penalty
 
             with tf.name_scope("gen"):
                 #                 g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
@@ -653,6 +654,7 @@ class TGANModel:
             os.environ['CUDA_VISIBLE_DEVICES'] = gpu
 
         self.comet_ml_key = comet_ml_key
+        self.experiment = Experiment(api_key=comet_ml_key, project_name='tgan-wgan-gp', workspace="baukebrenninkmeijer")
         self.gpu = gpu
 
     def get_model(self, training=True):
@@ -712,6 +714,7 @@ class TGANModel:
 
         self.model = self.get_model(training=True)
 
+        from tensorpack.callbacks import CometMLMonitor
 
         trainer = SeparateGANTrainer(
             model=self.model,
@@ -734,14 +737,17 @@ class TGANModel:
         logger.set_logger_dir(self.log_dir, action=action)
 
         callbacks = []
-        if self.comet_ml_key:
-            callbacks.append(CometMLMonitor(tags=['TGAN-WGAN-GP'], api_key=self.comet_ml_key))
-
+        monitors = []
         if self.save_checkpoints:
             callbacks.append(ModelSaver(checkpoint_dir=self.model_dir))
+        callbacks.append(MergeAllSummaries(period=10))
+
+        if self.comet_ml_key:
+            monitors.append(CometMLMonitor(experiment=self.experiment))
 
         trainer.train_with_defaults(
             callbacks=callbacks,
+            monitors=monitors,
             steps_per_epoch=self.steps_per_epoch,
             max_epoch=self.max_epoch,
             session_init=session_init,
