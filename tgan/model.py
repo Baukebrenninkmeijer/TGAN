@@ -698,7 +698,7 @@ class TGANModel:
 
         from tensorpack.callbacks import CometMLMonitor
 
-        trainer = SeparateGANTrainer(
+        trainer = GANTrainer(
             model=self.model,
             input_queue=input_queue,
         )
