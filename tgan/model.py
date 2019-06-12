@@ -290,7 +290,7 @@ class GraphBuilder(ModelDescBase):
                     states.append(state[1])
                     with tf.variable_scope("%02d" % ptr):
                         h = FullyConnected('FC', output, self.num_gen_feature, nl=tf.tanh)
-                        h = tf.concat(h, z, axis=1)
+                        h = tf.concat([h, z], axis=1)
                         w = FullyConnected('FC2', h, gaussian_components, nl=tf.nn.softmax)
                         outputs.append(w)
                         input = FullyConnected('FC3', w, self.num_gen_feature, nl=tf.identity)
@@ -306,7 +306,7 @@ class GraphBuilder(ModelDescBase):
                     states.append(state[1])
                     with tf.variable_scope("%02d" % ptr):
                         h = FullyConnected('FC', output, self.num_gen_feature, nl=tf.tanh)
-                        h = tf.concat(h, z, axis=1)
+                        h = tf.concat([h, z], axis=1)
                         w = FullyConnected('FC2', h, col_info['n'], nl=tf.nn.softmax)
                         outputs.append(w)
                         one_hot = tf.one_hot(tf.argmax(w, axis=1), col_info['n'])
@@ -696,8 +696,6 @@ class TGANModel:
 
         self.model = self.get_model(training=True)
 
-        from tensorpack.callbacks import CometMLMonitor
-
         trainer = GANTrainer(
             model=self.model,
             input_queue=input_queue,
@@ -723,7 +721,7 @@ class TGANModel:
             callbacks.append(ModelSaver(checkpoint_dir=self.model_dir))
         callbacks.append(MergeAllSummaries(period=10))
 
-        if self.comet_ml_key:
+        if self.experiment is not None:
             monitors.append(CometMLMonitor(experiment=self.experiment))
 
         trainer.train_with_defaults(

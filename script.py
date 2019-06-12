@@ -15,7 +15,7 @@ tgan = TGANModel(continuous_columns,
                  restore_session=False,  
                  max_epoch=100, 
                  steps_per_epoch=2000, 
-                 batch_size=5000,
+                 batch_size=500,
                  experiment=experiment)
 tgan.fit(d)
 
