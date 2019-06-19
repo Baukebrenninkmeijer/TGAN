@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
 import copy
 from sklearn.decomposition import PCA
 from dython.nominal import *
@@ -113,13 +114,13 @@ def categorical_distribution(real, fake, xlabel, ylabel, col=None, ax=None):
     classes = yr_cumsum.index.tolist() + yf_cumsum.index.tolist()
     data = pd.DataFrame({'values': values,
                          'real': real,
-                        'class': classes})
+                         'class': classes})
     paper_rc = {'lines.linewidth': 8}
-    sns.set_context("paper", rc = paper_rc)
-#     ax.plot(x=yr_cumsum.index.tolist(), y=yr_cumsum.values.tolist(), ms=8)
+    sns.set_context("paper", rc=paper_rc)
+    #     ax.plot(x=yr_cumsum.index.tolist(), y=yr_cumsum.values.tolist(), ms=8)
     sns.lineplot(y='values', x='class', data=data, ax=ax, hue='real')
-#     ax.bar(ind - width / 2, y_r.values, width, label='Real')
-#     ax.bar(ind + width / 2, y_f.values, width, label='Fake')
+    #     ax.bar(ind - width / 2, y_r.values, width, label='Real')
+    #     ax.bar(ind + width / 2, y_f.values, width, label='Fake')
 
     ax.set_ylabel('Distributions per variable')
 
@@ -173,6 +174,8 @@ class BaseDataEvaluator:
 
     def plot_stats(self):
         fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+        fig.suptitle('Mean and STDs', fontsize=16)
+
         real = self.real._get_numeric_data()
         fake = self.fake._get_numeric_data()
         real_num_mean = np.log10(np.add(real.mean().values, 1e-5))
@@ -199,6 +202,7 @@ class BaseDataEvaluator:
         plt.show()
 
     def plot_cumsums(self):
+        fig.suptitle('Cumulative Sums per feature', fontsize=16)
         nr_charts = len(self.real.columns)
         nr_cols = 4
         nr_rows = max(1, nr_charts // nr_cols)
@@ -235,9 +239,12 @@ class BaseDataEvaluator:
 
         assert distance_func is not None, f'Distance measure was None. Please select a measure from [euclidean, mae]'
 
+        real_corr = associations(self.real, nominal_columns=self.categorical_columns, return_results=True, theil_u=True, plot=False)
+        fake_corr = associations(self.fake, nominal_columns=self.categorical_columns, return_results=True, theil_u=True, plot=False)
+
         return distance_func(
-            self.real.corr().fillna(0).values,
-            self.fake.corr().fillna(0).values
+            real_corr.values,
+            fake_corr.values
         )
 
     def plot_2d(self):
@@ -245,8 +252,10 @@ class BaseDataEvaluator:
         Plot the first two components of a PCA of the numeric columns of real and fake.
         """
         numeric_columns = self.numerical_columns
-        real = self.real[numeric_columns]
-        fake = self.fake[numeric_columns]
+        #         real = self.real[numeric_columns]
+        #         fake = self.fake[numeric_columns]
+        real = numerical_encoding(self.real, nominal_columns=self.categorical_columns)
+        fake = numerical_encoding(self.fake, nominal_columns=self.categorical_columns)
         pca_r = PCA(n_components=2)
         pca_f = PCA(n_components=2)
 
@@ -254,6 +263,7 @@ class BaseDataEvaluator:
         fake_t = pca_f.fit_transform(fake)
 
         fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+        fig.suptitle('First two components of PCA', fontsize=16)
         sns.scatterplot(ax=ax[0], x=real_t[:, 0], y=real_t[:, 1])
         sns.scatterplot(ax=ax[1], x=fake_t[:, 0], y=fake_t[:, 1])
         ax[0].set_title('Real data')
@@ -285,30 +295,46 @@ class BaseDataEvaluator:
 
 class ModelDataEvaluator:
 
-    def __init__(self, real, fake, target_col, unique_thresh=20):
+    def __init__(self, real, fake, target_col, unique_thresh=20, n_samples=None):
         from sklearn.linear_model import SGDClassifier
         from sklearn.linear_model import LogisticRegression
         from sklearn.tree import DecisionTreeClassifier
         from sklearn.neural_network import MLPClassifier
+        from sklearn.ensemble import GradientBoostingClassifier
 
-        self.real = real
-        self.fake = fake
+        if n_samples is None:
+            n_samples = max(len(real), len(fake))
+        self.real = real.sample(n_samples)
+        self.fake = fake.sample(n_samples)
 
         self.unique_thresh = unique_thresh
-        self.numerical_columns = [column for column in real._get_numeric_data().columns if
-                                  len(real[column].unique()) > self.unique_thresh]
-        self.categorical_columns = [column for column in real.columns if column not in self.numerical_columns]
+        self.numerical_columns = [column for column in self.real._get_numeric_data().columns if
+                                  len(self.real[column].unique()) > self.unique_thresh]
+        self.categorical_columns = [column for column in self.real.columns if column not in self.numerical_columns]
 
-        self.real_x = numerical_encoding(real, nominal_columns=self.categorical_columns)
-        self.fake_x = numerical_encoding(fake, nominal_columns=self.categorical_columns)
-        self.real_y = pd.factorize(real[target_col])[0]
-        self.fake_y = pd.factorize(fake[target_col])[0]
+        # Make sure both real and fake have the same encoded and ordered columns
+        self.real_x = numerical_encoding(self.real, nominal_columns=self.categorical_columns)
+        columns = sorted(self.real_x.columns.tolist())
+        self.real_x = self.real_x[columns]
+        self.fake_x = numerical_encoding(self.fake, nominal_columns=self.categorical_columns)
+        for col in columns:
+            if col not in self.fake_x.columns.tolist():
+                self.fake_x[col] = 0
+        self.fake_x = self.fake_x[columns]
 
-        self.r2f_classifiers = [SGDClassifier(max_iter=1000, tol=1e-3),
-                                LogisticRegression(multi_class='auto', solver='lbfgs', max_iter=500),
-                                DecisionTreeClassifier(),
-                                MLPClassifier([200, 200], solver='adam', activation='relu', learning_rate='adaptive'),
-                                ]
+        self.real_y, uniques = pd.factorize(self.real[target_col])
+        mapping = {key: value for value, key in enumerate(uniques)}
+        self.fake_y = [mapping.get(key) for key in self.fake[target_col].tolist()]
+
+        self.real_x_train, self.real_x_test, self.real_y_train, self.real_y_test = train_test_split(self.real_x, self.real_y, test_size=0.2)
+        self.fake_x_train, self.fake_x_test, self.fake_y_train, self.fake_y_test = train_test_split(self.fake_x, self.fake_y, test_size=0.2)
+        self.r2f_classifiers = [
+            SGDClassifier(max_iter=100, tol=1e-3),
+            LogisticRegression(multi_class='auto', solver='lbfgs', max_iter=500),
+            GradientBoostingClassifier(),
+            DecisionTreeClassifier(),
+            MLPClassifier([200, 200], solver='adam', activation='relu', learning_rate='adaptive'),
+        ]
         self.f2r_classifiers = copy.deepcopy(self.r2f_classifiers)
         self.classifier_names = [type(clf).__name__ for clf in self.r2f_classifiers]
 
@@ -322,23 +348,28 @@ class ModelDataEvaluator:
         print(f'Fitting real to fake')
         for i, c in enumerate(self.r2f_classifiers):
             print(f'{i + 1}: {type(c).__name__}')
-            c.fit(self.real_x, self.real_y)
+            c.fit(self.real_x_train, self.real_y_train)
 
-        print(f'Fitting fake to real')
+        print(f'\nFitting fake to real')
         for i, c in enumerate(self.f2r_classifiers):
             print(f'{i + 1}: {type(c).__name__}')
-            c.fit(self.fake_x, self.fake_y)
+            c.fit(self.fake_x_train, self.fake_y_train)
 
     def _score(self):
         from sklearn.metrics import f1_score
-        r2f = [f1_score(self.fake_y, clf.predict(self.fake_x)) for clf in self.r2f_classifiers]
-        f2r = [f1_score(self.fake_y, clf.predict(self.fake_x)) for clf in self.f2r_classifiers]
-        return r2f, f2r
+        # Calculate the normal test set accuracies
+        r2r = [f1_score(self.real_y_test, clf.predict(self.real_x_test), average='micro') for clf in self.r2f_classifiers]
+        f2f = [f1_score(self.fake_y_test, clf.predict(self.fake_x_test), average='micro') for clf in self.f2r_classifiers]
+
+        # Calculate test set accuracies on the other dataset
+        r2f = [f1_score(self.fake_y_test, clf.predict(self.fake_x_test), average='micro') for clf in self.r2f_classifiers]
+        f2r = [f1_score(self.real_y_test, clf.predict(self.real_x_test), average='micro') for clf in self.f2r_classifiers]
+        return r2r, f2f, r2f, f2r
 
     def evaluate(self):
         self._fit()
-        r2f, f2r = self._score()
-        results = pd.DataFrame({'r2f F1': r2f, 'f2r F1': f2r})
+        r2r, f2f, r2f, f2r = self._score()
+        results = pd.DataFrame({'real2real F1': r2r, 'real2fake F1': r2f, 'fake2fake F1': f2f, 'fake2real F1': f2r})
         results.index = [type(clf).__name__ for clf in self.r2f_classifiers]
         return results
 
@@ -414,7 +445,8 @@ def associations(dataset, nominal_columns=None, mark_columns=False, theil_u=Fals
         corr.columns = marked_columns
         corr.index = marked_columns
     if plot:
-        plt.figure(figsize=kwargs.get('figsize', None))
+        if kwargs.get('ax') is None:
+            plt.figure(figsize=kwargs.get('figsize', None))
         cmap = sns.diverging_palette(220, 10, as_cmap=True)
         sns.set(style="white")
         sns.heatmap(corr, annot=kwargs.get('annot', True), fmt=kwargs.get('fmt', '.2f'), cmap=cmap, vmax=1, center=0,
