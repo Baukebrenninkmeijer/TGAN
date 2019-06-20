@@ -26,7 +26,9 @@ tgan = TGANModel(continuous_columns,
                  max_epoch=100, 
                  steps_per_epoch=5000, 
                  batch_size=200,
-                 experiment=experiment)
+                 experiment=experiment,
+                 num_gen_rnn=50,
+                 num_gen_feature=64)
 tgan.fit(d)
 
 model_path = f'model/{ds}_{project_name}'
