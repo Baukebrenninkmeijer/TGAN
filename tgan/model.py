@@ -128,31 +128,6 @@ class GraphBuilder(ModelDescBase):
             tf.summary.histogram('logits_fake', logits_fake)
 
             with tf.name_scope("discrim"):
-                #                 d_loss_pos = tf.reduce_mean(
-                #                     tf.nn.sigmoid_cross_entropy_with_logits(
-                #                         logits=logits_real,
-                #                         labels=tf.ones_like(logits_real)) * 0.7 + tf.random_uniform(
-                #                             tf.shape(logits_real),
-                #                             maxval=0.3
-                #                     ),
-                #                     name='loss_real'
-                #                 )
-
-                #                 d_loss_neg = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-                #                     logits=logits_fake, labels=tf.zeros_like(logits_fake)), name='loss_fake')
-
-                #                 d_pos_acc = tf.reduce_mean(
-                #                     tf.cast(score_real > 0.5, tf.float32), name='accuracy_real')
-
-                #                 d_neg_acc = tf.reduce_mean(
-                #                     tf.cast(score_fake < 0.5, tf.float32), name='accuracy_fake')
-
-                #                 d_loss = 0.5 * d_loss_pos + 0.5 * d_loss_neg + \
-                #                     tf.contrib.layers.apply_regularization(
-                #                         tf.contrib.layers.l2_regularizer(l2_norm),
-                #                         tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, "discrim"))
-                #                 self.d_loss = tf.identity(d_loss, name='loss')
-
                 self.epsilon = tf.random_uniform(
                     shape=[self.batch_size, 1, 1, 1],
                     minval=0.,
@@ -164,19 +139,10 @@ class GraphBuilder(ModelDescBase):
                 red_idx = list(range(1, X_hat.shape.ndims))
                 slopes = tf.sqrt(tf.reduce_sum(tf.square(grad_D_X_hat), reduction_indices=red_idx))
                 gradient_penalty = tf.identity(tf.reduce_mean((slopes - 1.) ** 2), name='GP')
-                self.d_loss = tf.reduce_mean(logits_real) - tf.reduce_mean(logits_fake)
+                self.d_loss = tf.reduce_mean(logits_fake) - tf.reduce_mean(logits_real)
                 self.d_loss = self.d_loss + 4 * gradient_penalty
 
             with tf.name_scope("gen"):
-                #                 g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-                #                     logits=logits_fake, labels=tf.ones_like(logits_fake))) + \
-                #                     tf.contrib.layers.apply_regularization(
-                #                         tf.contrib.layers.l2_regularizer(l2_norm),
-                #                         tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'gen'))
-
-                #                 g_loss = tf.identity(g_loss, name='loss')
-                #                 extra_g = tf.identity(extra_g, name='klloss')
-                #                 self.g_loss = tf.identity(g_loss + extra_g, name='final-g-loss')
                 self.g_loss = -tf.reduce_mean(logits_fake)
 
             self.d_loss_sum = tf.summary.scalar("Discriminator_loss", self.d_loss)
@@ -742,6 +708,10 @@ class TGANModel:
             callbacks.append(ModelSaver(checkpoint_dir=self.model_dir))
         callbacks.append(MergeAllSummaries(period=10))
 
+<<<<<<< HEAD
+=======
+        
+>>>>>>> update eval with statistical/model evaluations. Update model to work with experiments and fix loss function TM
         if self.comet_ml_key:
             monitors.append(CometMLMonitor(experiment=self.experiment))
 
