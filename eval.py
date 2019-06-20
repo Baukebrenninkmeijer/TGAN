@@ -303,31 +303,33 @@ class ModelDataEvaluator:
         from sklearn.ensemble import GradientBoostingClassifier
 
         if n_samples is None:
-            n_samples = max(len(real), len(fake))
+            n_samples = min(len(real), len(fake))
         self.real = real.sample(n_samples)
         self.fake = fake.sample(n_samples)
 
         self.unique_thresh = unique_thresh
-        self.numerical_columns = [column for column in self.real._get_numeric_data().columns if
-                                  len(self.real[column].unique()) > self.unique_thresh]
+        self.numerical_columns = [column for column in self.real._get_numeric_data().columns if len(self.real[column].unique()) > self.unique_thresh]
         self.categorical_columns = [column for column in self.real.columns if column not in self.numerical_columns]
 
         # Make sure both real and fake have the same encoded and ordered columns
-        self.real_x = numerical_encoding(self.real, nominal_columns=self.categorical_columns)
+        self.real_x = numerical_encoding(self.real.drop([target_col], axis=1), nominal_columns=self.categorical_columns)
         columns = sorted(self.real_x.columns.tolist())
         self.real_x = self.real_x[columns]
-        self.fake_x = numerical_encoding(self.fake, nominal_columns=self.categorical_columns)
+        self.fake_x = numerical_encoding(self.fake.drop([target_col], axis=1), nominal_columns=self.categorical_columns)
         for col in columns:
             if col not in self.fake_x.columns.tolist():
                 self.fake_x[col] = 0
         self.fake_x = self.fake_x[columns]
 
+        # Encode real and fake target the same
         self.real_y, uniques = pd.factorize(self.real[target_col])
         mapping = {key: value for value, key in enumerate(uniques)}
         self.fake_y = [mapping.get(key) for key in self.fake[target_col].tolist()]
 
+        # split real and fake into train and test sets
         self.real_x_train, self.real_x_test, self.real_y_train, self.real_y_test = train_test_split(self.real_x, self.real_y, test_size=0.2)
         self.fake_x_train, self.fake_x_test, self.fake_y_train, self.fake_y_test = train_test_split(self.fake_x, self.fake_y, test_size=0.2)
+
         self.r2f_classifiers = [
             SGDClassifier(max_iter=100, tol=1e-3),
             LogisticRegression(multi_class='auto', solver='lbfgs', max_iter=500),
