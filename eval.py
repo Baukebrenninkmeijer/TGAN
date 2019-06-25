@@ -202,11 +202,11 @@ class BaseDataEvaluator:
         plt.show()
 
     def plot_cumsums(self):
-        fig.suptitle('Cumulative Sums per feature', fontsize=16)
         nr_charts = len(self.real.columns)
         nr_cols = 4
         nr_rows = max(1, nr_charts // nr_cols)
         fig, ax = plt.subplots(nr_rows, nr_cols, figsize=(16, 6 * nr_rows))
+        fig.suptitle('Cumulative Sums per feature', fontsize=16)
         axes = ax.flatten()
         for i, col in enumerate(self.real.columns):
             if col in self.categorical_columns:
