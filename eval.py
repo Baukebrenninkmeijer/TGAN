@@ -154,24 +154,25 @@ def euclidean_distance(ma, mb):
     return np.sqrt(np.sum(np.power(np.subtract(ma, mb), 2)))
 
 
-def columns_correlations(dataset_a, dataset_b, categorical_columns, theil_u=True):
+def column_correlations(dataset_a, dataset_b, categorical_columns, theil_u=True):
     if categorical_columns is None:
         categorical_columns = list()
     elif categorical_columns == 'all':
         categorical_columns = dataset_a.columns
     assert dataset_a.columns.tolist() == dataset_b.columns.tolist()
-    corr = pd.DataFrame(columns=dataset_a.columns, index=['value'])
+    corr = pd.DataFrame(columns=dataset_a.columns, index=['correlation'])
 
     for column in dataset_a.columns.tolist():
         if column in categorical_columns:
             if theil_u:
-                corr[column] = theils_u(dataset_a[column], dataset_b[column])
+                corr[column] = theils_u(dataset_a[column].sort_values(), dataset_b[column].sort_values())
             else:
-                corr[column] = cramers_v(dataset_a[column], dataset_b[column])
+                corr[column] = cramers_v(dataset_a[column].sort_values(), dataset_b[column].sort_vaues())
         else:
-            corr[column], _ = ss.pearsonr(dataset_a[column], dataset_b[column])
+            corr[column], _ = ss.pearsonr(dataset_a[column].sort_values(), dataset_b[column].sort_values())
     corr.fillna(value=np.nan, inplace=True)
-    return corr
+    correlation = np.mean(corr.values.flatten())
+    return correlation
 
 
 def associations(dataset, nominal_columns=None, mark_columns=False, theil_u=False, plot=True,
@@ -310,7 +311,7 @@ def numerical_encoding(dataset, nominal_columns='all', drop_single_label=False, 
 
 
 class BaseDataEvaluator:
-    def __init__(self, real, fake, unique_thresh=20):
+    def __init__(self, real, fake, unique_thresh=20, metric='kendalltau', verbose=False):
         if isinstance(real, np.ndarray):
             real = pd.DataFrame(real)
             fake = pd.DataFrame(fake)
@@ -322,8 +323,8 @@ class BaseDataEvaluator:
         self.categorical_columns = [column for column in real.columns if column not in self.numerical_columns]
         self.real = real
         self.fake = fake
-        self.real_dummy = None
-        self.fake_dummy = None
+        self.comparison_metric = getattr(stats, metric)
+        self.verbose = verbose
 
     def plot_mean_std(self):
         fig, ax = plt.subplots(1, 2, figsize=(10, 5))
@@ -429,21 +430,25 @@ class BaseDataEvaluator:
         duplicates = df[df.duplicated(keep=False)]
         return duplicates
 
-    def _fit(self):
+    def fit_classifiers(self):
         """
         Fit self.r_classifiers and self.f_classifiers to real and fake data, respectively.
         """
-        logger.debug(f'Fitting real')
+        if self.verbose:
+            print(f'Fitting real')
         for i, c in enumerate(self.r_classifiers):
-            logger.debug(f'{i + 1}: {type(c).__name__}')
+            if self.verbose:
+                print(f'{i + 1}: {type(c).__name__}')
             c.fit(self.real_x_train, self.real_y_train)
 
-        logger.debug(f'\nFitting fake')
+        if self.verbose:
+            print(f'\nFitting fake')
         for i, c in enumerate(self.f_classifiers):
-            logger.debug(f'{i + 1}: {type(c).__name__}')
+            if self.verbose:
+                print(f'{i + 1}: {type(c).__name__}')
             c.fit(self.fake_x_train, self.fake_y_train)
 
-    def _score(self):
+    def score_classifiers(self):
         """
         Get F1 scores of self.r_classifiers and self.f_classifiers on the fake and real data, respectively.
         :return:
@@ -454,8 +459,8 @@ class BaseDataEvaluator:
         # Calculate test set accuracies on the other dataset
         r2f = [f1_score(self.fake_y_train, clf.predict(self.fake_x_train), average='micro') for clf in self.r_classifiers]
         f2r = [f1_score(self.real_y_train, clf.predict(self.real_x_train), average='micro') for clf in self.f_classifiers]
-        index = [f'real_data_{classifier}' for classifier in self.classifier_names] + \
-                [f'fake_data_{classifier}' for classifier in self.classifier_names]
+        index = [f'real_data_{classifier}_F1' for classifier in self.classifier_names] + \
+                [f'fake_data_{classifier}_F1' for classifier in self.classifier_names]
         results = pd.DataFrame({'real': r2r + r2f, 'fake': f2r + f2f}, index=index)
         return results
 
@@ -472,9 +477,9 @@ class BaseDataEvaluator:
             'Euclidean distance correlations',
             'MAE distance correlations',
         ]
-        values.append(len(self.get_duplicates()))
-        values.append(self.correlation_distance(how='euclidean'))
-        values.append(self.correlation_distance(how='mae'))
+        values.append(1 - len(self.get_duplicates()))
+        values.append(1 - self.correlation_distance(how='euclidean'))
+        values.append(1 - self.correlation_distance(how='mae'))
 
         summary = pd.DataFrame({'values': values})
         summary.index = metrics
@@ -488,6 +493,10 @@ class BaseDataEvaluator:
             num_ds = ds[self.numerical_columns]
 
             # Basic statistical properties
+            for idx, value in num_ds.min().items():
+                metrics[f'min_{idx}'] = value
+            for idx, value in num_ds.max().items():
+                metrics[f'max_{idx}'] = value
             for idx, value in num_ds.mean().items():
                 metrics[f'mean_{idx}'] = value
             for idx, value in num_ds.median().items():
@@ -496,19 +505,25 @@ class BaseDataEvaluator:
                 metrics[f'std_{idx}'] = value
             for idx, value in num_ds.var().items():
                 metrics[f'variance_{idx}'] = value
-
-            corr_df = associations(ds, nominal_columns=self.categorical_columns, return_results=True, theil_u=True, plot=False)
-            corr = corr_df.values
-            np.fill_diagonal(corr, 0)
-            metrics['corr_sum'] = np.sum(corr)
-            metrics['corr_mean'] = np.mean(corr)
-            metrics['corr_std'] = np.std(corr)
-            metrics['corr_var'] = np.var(corr)
-            metrics['corr_median'] = np.median(corr)
             total_metrics[ds_name] = metrics.values()
 
         total_metrics.index = metrics.keys()
-        return total_metrics
+        self.statistical_results = total_metrics
+        if self.verbose:
+            print(total_metrics.to_string())
+        corr, p = self.comparison_metric(total_metrics['real'], total_metrics['fake'])
+        return corr
+
+    def correlation_correlation(self):
+        total_metrics = pd.DataFrame()
+        for ds_name in ['real', 'fake']:
+            ds = getattr(self, ds_name)
+            corr_df = associations(ds, nominal_columns=self.categorical_columns, return_results=True, theil_u=True, plot=False)
+            total_metrics[ds_name] = corr_df.values.flatten()
+        corr, p = self.comparison_metric(total_metrics['real'], total_metrics['fake'])
+        if self.verbose:
+            print(total_metrics.to_string())
+        return corr
 
     def classifier_evaluation(self, target_col, n_samples=None):
         self.target_col = target_col
@@ -541,7 +556,7 @@ class BaseDataEvaluator:
             LogisticRegression(multi_class='auto', solver='lbfgs', max_iter=500),
             GradientBoostingClassifier(),
             DecisionTreeClassifier(),
-            MLPClassifier([200, 200], solver='adam', activation='relu', learning_rate='adaptive'),
+            MLPClassifier([50, 50], max_iter=50, solver='adam', activation='relu', learning_rate='adaptive'),
         ]
 
         self.r_classifiers = copy.deepcopy(self.classifiers)
@@ -552,11 +567,29 @@ class BaseDataEvaluator:
             assert hasattr(classifier, 'fit')
             assert hasattr(classifier, 'score')
 
-        self._fit()
-        classifier_scores = self._score()
-        return classifier_scores
+        self.fit_classifiers()
+        classifier_scores = self.score_classifiers()
+        if self.verbose:
+            print(classifier_scores.to_string())
+        corr, p = self.comparison_metric(classifier_scores['real'], classifier_scores['fake'])
+        return corr
 
-    def evaluate(self, target_col, n_samples=None, metric='kendalltau', verbose=False):
+    def pca_correlation(self):
+        pca_r = PCA(n_components=5)
+        pca_f = PCA(n_components=5)
+
+        real = numerical_encoding(self.real, nominal_columns=self.categorical_columns)
+        fake = numerical_encoding(self.fake, nominal_columns=self.categorical_columns)
+
+        pca_r.fit(real)
+        pca_f.fit(fake)
+        if self.verbose:
+            results = pd.DataFrame({'real': pca_r.explained_variance_, 'fake': pca_f.explained_variance_})
+            print(results.to_string())
+        corr, p = self.comparison_metric(pca_r.explained_variance_, pca_f.explained_variance_)
+        return corr
+
+    def evaluate(self, target_col, n_samples=None, metric=None, verbose=None):
         """
         Determine correlation between attributes from the real and fake dataset using a given metric.
         All metrics from scipy.stats are available.
@@ -565,21 +598,33 @@ class BaseDataEvaluator:
         :param metric: scoring metric for the attributes. By default Kendall Tau ranking is used. Alternatives
             include Spearman rho (stats.spearmanr) ranking.
         """
+        if verbose is not None:
+            self.verbose = verbose
+        if metric is not None:
+            self.comparison_metric = metric
         if n_samples is None:
             n_samples = min(len(self.real), len(self.fake))
         warnings.filterwarnings(action='ignore', category=ConvergenceWarning)
-        statistical_results = self.statistical_evaluation()
-        classifier_results = self.classifier_evaluation(target_col, n_samples=n_samples)
-        total_result = statistical_results.append(classifier_results[['real', 'fake']])
-        correlation, p_val = getattr(stats, metric)(total_result['real'], total_result['fake'])
-
         pd.options.display.float_format = '{:,.4f}'.format
-        if verbose:
-            print(total_result.to_string())
-        print(f'Correlation metric: {metric}')
-        print(f'\nTotal correlation: {correlation} \np-value: {p_val}')
 
-        comparison_results = self.visual_evaluation(plot=False)
-        for key, value in comparison_results.iterrows():
-            print(f'{key}: {value[0]}')
+        print(f'\nCorrelation metric: {self.comparison_metric.__name__}')
 
+        basic_statistical = self.statistical_evaluation()  # 2 columns -> Kendall Tau -> correlation coefficient
+        correlation_correlation = self.correlation_correlation()  # 2 columns -> Kendall Tau -> Correlation coefficient
+        column_correlation = column_correlations(self.real, self.fake, self.categorical_columns)  # 1 column -> Mean
+        classifiers = self.classifier_evaluation(target_col=target_col, n_samples=n_samples)  # 1 2 columns -> Kendall Tau -> Correlation coefficient
+        pca_variance = self.pca_correlation()  # 1 number
+        duplicate_rows = 1-dup_rows
+
+        all_result = [
+            basic_statistical,
+            correlation_correlation,
+            column_correlation,
+            classifiers,
+            pca_variance,
+            duplicate_rows,
+        ]
+        total_result = np.product(all_result)
+
+        print(f'correlation values:\n' + '\n'.join([str(result) for result in all_result]))
+        print(f'Total: {total_result}')
