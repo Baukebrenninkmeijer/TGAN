@@ -33,7 +33,7 @@ for ds in datasets:
     else:
         raise Exception('Unknown dataset mentioned')
 
-    project_name = "tgan-skip-connections"
+    project_name = "tgan"
     experiment = Experiment(api_key="49HGMPyIKjokHwg2pVOKWTG67",
                             project_name=project_name, workspace="baukebrenninkmeijer")
 
