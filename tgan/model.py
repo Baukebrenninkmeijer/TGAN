@@ -15,6 +15,8 @@ import pickle
 import tarfile
 
 import numpy as np
+from comet_ml import Experiment
+from tensorpack.callbacks import CometMLMonitor, MergeAllSummaries
 import tensorflow as tf
 from tensorpack import (
     BatchData, BatchNorm, Dropout, FullyConnected, InputDesc, ModelDescBase, ModelSaver,
@@ -596,7 +598,7 @@ class TGANModel:
         self, continuous_columns, output='output', gpu=None, max_epoch=5, steps_per_epoch=10000,
         save_checkpoints=True, restore_session=True, batch_size=200, z_dim=200, noise=0.2,
         l2norm=0.00001, learning_rate=0.001, num_gen_rnn=100, num_gen_feature=100,
-        num_dis_layers=1, num_dis_hidden=100, optimizer='AdamOptimizer',
+        num_dis_layers=1, num_dis_hidden=100, optimizer='AdamOptimizer', comet_ml_key=None, experiment=None, ds=None
     ):
         """Initialize object."""
         # Output
@@ -627,6 +629,13 @@ class TGANModel:
         if gpu:
             os.environ['CUDA_VISIBLE_DEVICES'] = gpu
 
+        if experiment is not None:
+            self.experiment = experiment
+        elif comet_ml_key is not None:
+            self.comet_ml_key = comet_ml_key
+            self.experiment = Experiment(api_key=comet_ml_key, project_name='tgan-wgan-gp', workspace="baukebrenninkmeijer")
+        if ds is not None:
+            experiment.log_dataset_info(name=ds)
         self.gpu = gpu
 
     def get_model(self, training=True):
@@ -702,14 +711,20 @@ class TGANModel:
             starting_epoch = 1
 
         action = 'k' if self.restore_session else None
-        logger.set_logger_dir(self.log_dir, action=action)
+        # logger.set_logger_dir(self.log_dir, action=action)
 
         callbacks = []
+        monitors = []
         if self.save_checkpoints:
             callbacks.append(ModelSaver(checkpoint_dir=self.model_dir))
+        callbacks.append(MergeAllSummaries(period=10))
+
+        if self.experiment is not None:
+            monitors.append(CometMLMonitor(experiment=self.experiment))
 
         trainer.train_with_defaults(
             callbacks=callbacks,
+            monitors=monitors,
             steps_per_epoch=self.steps_per_epoch,
             max_epoch=self.max_epoch,
             session_init=session_init,
