@@ -30,6 +30,8 @@ for ds in datasets:
         d, continuous_columns = get_data(ds, sep=',')    
     elif ds == 'creditcard':
         d, continuous_columns = get_data(ds, sep=',', suffix='num')
+    else:
+        raise Exception('Unknown dataset mentioned')
 
     project_name = "tgan-skip-connections"
     experiment = Experiment(api_key="49HGMPyIKjokHwg2pVOKWTG67",
