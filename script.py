@@ -15,7 +15,6 @@ def get_data(ds, drop=None, n_unique=20, sep=';', suffix='cat'):
             continuous_columns.append(d.columns.get_loc(col))
     return d, continuous_columns
 
-
 parser = argparse.ArgumentParser(description='Evaluate data synthesizers')
 parser.add_argument('--dataset', nargs='*', help='Which dataset to choose. Options are berka, creditcard and ticket', default=['berka', 'census', 'creditcard'])
 
