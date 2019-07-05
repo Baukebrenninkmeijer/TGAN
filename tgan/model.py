@@ -822,8 +822,8 @@ class TGANModel:
         self.model = None
         self.simple_dataset_predictor = None
 
-        with open('{}/TGANModel'.format(self.output), 'wb') as f:
-            pickle.dump(self, f)
+        # with open('{}/TGANModel'.format(self.output), 'wb') as f:
+        #     pickle.dump(self, f)
 
         self.model = model
         self.simple_dataset_predictor = dataset_predictor
