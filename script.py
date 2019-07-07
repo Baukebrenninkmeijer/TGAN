@@ -35,6 +35,7 @@ for ds in datasets:
     project_name = "tgan-wgan-gp"
     experiment = Experiment(api_key="49HGMPyIKjokHwg2pVOKWTG67",
                             project_name=project_name, workspace="baukebrenninkmeijer")
+    experiment.log_parameter('dataset', ds)
 
     tgan = TGANModel(continuous_columns,
                      restore_session=False,
@@ -56,8 +57,7 @@ for ds in datasets:
         p[p._get_numeric_data().columns] = p[p._get_numeric_data().columns].astype('int')
     if ds == 'creditcard':
         p[['time', 'class']] = p[['time', 'class']].astype('int')
-    p.to_csv(f'samples/{ds}_sample_{project_name}_2layerskip.csv', index=False)
-    experiment.log_dataset_info(name=ds)
+    p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
     experiment.end()
 
     tgan.save(model_path, force=True)
