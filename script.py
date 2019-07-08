@@ -59,7 +59,9 @@ for ds in datasets:
     if ds == 'creditcard':
         p[['time', 'class']] = p[['time', 'class']].astype('int')
         
-    p.to_csv(f'samples/{ds}_sample_{project_name}_2layerskip.csv', index=False)
+    p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
     experiment.end()
 
     tgan.save(model_path, force=True)
+    import tensorflow as tf
+    tf.keras.backend.clear_session()
