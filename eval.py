@@ -310,7 +310,7 @@ def numerical_encoding(dataset, nominal_columns='all', drop_single_label=False, 
         return converted_dataset, binary_columns_dict
 
 
-class BaseDataEvaluator:
+class DataEvaluator:
     def __init__(self, real, fake, unique_thresh=20, metric='kendalltau', verbose=False):
         if isinstance(real, np.ndarray):
             real = pd.DataFrame(real)
@@ -614,7 +614,7 @@ class BaseDataEvaluator:
         column_correlation = column_correlations(self.real, self.fake, self.categorical_columns)  # 1 column -> Mean
         classifiers = self.classifier_evaluation(target_col=target_col, n_samples=n_samples)  # 1 2 columns -> Kendall Tau -> Correlation coefficient
         pca_variance = self.pca_correlation()  # 1 number
-        duplicate_rows = 1-dup_rows
+        duplicate_rows = 1-(len(self.get_duplicates())/100)
 
         all_result = [
             basic_statistical,
