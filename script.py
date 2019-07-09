@@ -2,6 +2,8 @@ from comet_ml import Experiment
 import pandas as pd
 from tgan.model import TGANModel
 import argparse
+import os
+
 
 def get_data(ds, drop=None, n_unique=20, sep=';', suffix='cat'):
     d = pd.read_csv(f'../data/{ds}/{ds}_{suffix}.csv', sep=sep)
@@ -58,6 +60,11 @@ for ds in datasets:
         p[p._get_numeric_data().columns] = p[p._get_numeric_data().columns].astype('int')
     if ds == 'creditcard':
         p[['time', 'class']] = p[['time', 'class']].astype('int')
+
+    if os.path.exists('/mnt'):
+        if not os.path.exists('/mnt/samples'):
+            os.mkdir('/mnt/samples')
+        p.to_csv(f'/mnt/samples/{ds}_sample_{project_name}.csv', index=False)
     p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
     experiment.end()
 
