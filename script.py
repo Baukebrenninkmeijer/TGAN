@@ -73,7 +73,11 @@ for ds in datasets:
         
     experiment.end()
 
-    tgan.save(model_path, force=True)
+    try:
+        tgan.save(f'/mnt/{model_path}', force=True)
+    except:
+        tgan.save(model_path, force=True)
+
     import tensorflow as tf
     tf.keras.backend.clear_session()
 
