@@ -65,7 +65,9 @@ for ds in datasets:
         if not os.path.exists('/mnt/samples'):
             os.mkdir('/mnt/samples')
         p.to_csv(f'/mnt/samples/{ds}_sample_{project_name}.csv', index=False)
-    p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
+    else:
+        p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
+        
     experiment.end()
 
     tgan.save(model_path, force=True)
