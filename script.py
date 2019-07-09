@@ -48,7 +48,12 @@ for ds in datasets:
                      num_gen_feature=64)
     tgan.fit(d)
 
-    model_path = f'model/{ds}_{project_name}'
+    if os.path.exists('/mnt'):
+        if not os.path.exists('/mnt/model'):
+            os.mkdir('/mnt/model')
+        model_path = f'/mnt/model/{ds}_{project_name}'
+    else:
+        model_path = f'model/{ds}_{project_name}'
 
     num_samples = 100000
     new_samples = tgan.sample(num_samples)
