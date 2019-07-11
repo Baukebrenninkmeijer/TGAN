@@ -789,7 +789,7 @@ class TGANModel:
             destination_dir = os.path.dirname(tar_handle.getmembers()[0].name)
             tar_handle.extractall()
 
-        with open('{}/TGANModel'.format(destination_dir), 'rb') as f:
+        with open('{}/TGANModel'.format(destination_dir), 'rb+') as f:
             instance = pickle.load(f)
 
         instance.prepare_sampling()
