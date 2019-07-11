@@ -65,6 +65,7 @@ for ds in datasets:
 
     num_samples = 100000
     new_samples = tgan.sample(num_samples)
+    new_samples.to_csv(f'temp_save_{ds}.csv', index=False)
 
     p = new_samples.copy()
     if ds == 'berka' or ds == 'census':
@@ -78,7 +79,8 @@ for ds in datasets:
         p.to_csv(f'/mnt/samples/{ds}_sample_{project_name}.csv', index=False)
     else:
         p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
-        
+
+    os.remove('temp_save.csv')
     experiment.end()
 
 
