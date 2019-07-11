@@ -57,6 +57,12 @@ for ds in datasets:
     else:
         model_path = f'model/{ds}_{project_name}'
 
+
+    try:
+        tgan.save(f'/mnt/{model_path}', force=True)
+    except:
+        tgan.save(model_path, force=True)
+
     num_samples = 100000
     new_samples = tgan.sample(num_samples)
 
@@ -75,10 +81,6 @@ for ds in datasets:
         
     experiment.end()
 
-    try:
-        tgan.save(f'/mnt/{model_path}', force=True)
-    except:
-        tgan.save(model_path, force=True)
 
     import tensorflow as tf
     tf.keras.backend.clear_session()
