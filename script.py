@@ -69,6 +69,7 @@ for ds in datasets:
     new_samples.to_csv(f'temp_save_{ds}.csv', index=False)
 
     p = new_samples.copy()
+    p.columns = d.columns
     if ds == 'berka' or ds == 'census':
         p[p._get_numeric_data().columns] = p[p._get_numeric_data().columns].astype('int')
     if ds == 'creditcard':
