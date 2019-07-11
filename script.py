@@ -39,6 +39,7 @@ for ds in datasets:
     experiment = Experiment(api_key="49HGMPyIKjokHwg2pVOKWTG67",
                             project_name=project_name, workspace="baukebrenninkmeijer")
     experiment.log_parameter('dataset', ds)
+    print(f'ds: {ds}')
 
     tgan = TGANModel(continuous_columns, 
                      restore_session=False,  
