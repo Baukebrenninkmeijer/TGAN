@@ -141,6 +141,8 @@ class GraphBuilder(ModelDescBase):
                 gradient_penalty = tf.identity(tf.reduce_mean((slopes - 1.) ** 2), name='GP')
                 self.d_loss = tf.reduce_mean(logits_fake) - tf.reduce_mean(logits_real)
                 self.d_loss = self.d_loss + 4 * gradient_penalty
+                self.d_loss_sum = tf.summary.scalar("Discriminator_loss", self.d_loss)
+                self.gp_sum = tf.summary.scalar("Gradient_penalty", gradient_penalty)
 
                 self.d_loss_sum = tf.summary.scalar("Discriminator_loss", self.d_loss)
                 self.gp_sum = tf.summary.scalar("Gradient_penalty", gradient_penalty)
