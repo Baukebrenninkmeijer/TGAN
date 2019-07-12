@@ -75,11 +75,12 @@ for ds in datasets:
     if ds == 'creditcard':
         p[['time', 'class']] = p[['time', 'class']].astype('int')
 
-    if os.path.exists('/mnt'):
-        if not os.path.exists('/mnt/samples'):
-            os.mkdir('/mnt/samples')
-        p.to_csv(f'/mnt/samples/{ds}_sample_{project_name}.csv', index=False)
-    else:
+    try:
+        if os.path.exists('/mnt'):
+            if not os.path.exists('/mnt/samples'):
+                os.mkdir('/mnt/samples')
+            p.to_csv(f'/mnt/samples/{ds}_sample_{project_name}.csv', index=False)
+    except:
         p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
 
     os.remove('temp_save.csv')
