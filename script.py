@@ -50,8 +50,15 @@ for ds in datasets:
                      num_gen_feature=64)
     tgan.fit(d)
 
-    model_path = f'model/{ds}_{project_name}'
-
+    try:
+        if os.path.exists('/mnt'):
+            if not os.path.exists('/mnt/model'):
+                os.mkdir('/mnt/model')
+            model_path = f'/mnt/model/{ds}_{project_name}'
+        else:
+            model_path = f'model/{ds}_{project_name}'
+    except:
+        model_path = f'model/{ds}_{project_name}'
 
     try:
         tgan.save(f'/mnt/{model_path}', force=True)
@@ -74,6 +81,8 @@ for ds in datasets:
             if not os.path.exists('/mnt/samples'):
                 os.mkdir('/mnt/samples')
             p.to_csv(f'/mnt/samples/{ds}_sample_{project_name}.csv', index=False)
+        else:
+            p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
     except:
         p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
 
