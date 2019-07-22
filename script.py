@@ -61,9 +61,9 @@ for ds in datasets:
         model_path = f'model/{ds}_{project_name}'
 
     try:
-        tgan.save(f'/mnt/{model_path}', force=True)
-    except:
         tgan.save(model_path, force=True)
+    except Exception as e:
+        print(f'{e}\nModel could not be saved')
 
     num_samples = 100000
     new_samples = tgan.sample(num_samples)
@@ -86,7 +86,11 @@ for ds in datasets:
     except:
         p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
 
-    os.remove('temp_save.csv')
+    try:
+        os.remove('temp_save.csv')
+    except:
+        print('Could not remove temp_save.csv')
+
     experiment.end()
 
 
