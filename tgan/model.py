@@ -293,7 +293,6 @@ class GraphBuilder(ModelDescBase):
                         h = tf.concat([h, z], axis=1)
                         w = FullyConnected('FC2', h, gaussian_components, nl=tf.nn.softmax)
                         outputs.append(w)
-                        w = tf.concat([w, h], axis=1)
                         input = FullyConnected('FC3', w, self.num_gen_feature, nl=tf.identity)
                         input = tf.concat([input, z], axis=1)
                         attw = tf.get_variable("attw", shape=(len(states), 1, 1))
@@ -310,8 +309,6 @@ class GraphBuilder(ModelDescBase):
                         h = tf.concat([h, z], axis=1)
                         w = FullyConnected('FC2', h, col_info['n'], nl=tf.nn.softmax)
                         outputs.append(w)
-                        w = tf.concat([w, h], axis=1)
-
                         one_hot = tf.one_hot(tf.argmax(w, axis=1), col_info['n'])
                         input = FullyConnected(
                             'FC3', one_hot, self.num_gen_feature, nl=tf.identity)
