@@ -90,7 +90,7 @@ for ds in datasets:
         p.to_csv(f'samples/{ds}_sample_{project_name}.csv', index=False)
 
     try:
-        os.remove('temp_save.csv')
+        os.remove(f'temp_save_{ds}.csv')
     except Exception as e:
         print(f'{e} -- Could not remove temp_save_{ds}.csv')
 
