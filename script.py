@@ -39,11 +39,15 @@ for ds in datasets:
     experiment.log_parameter('dataset', ds)
     print(f'ds: {ds}')
 
+    batch_size = 200
+    assert len(d) > batch_size, f'Batch size larger than data'
+    steps_per_epoch = len(d)//batch_size
+    print('Steps per epoch: ', steps_per_epoch)
     tgan = TGANModel(continuous_columns,
                      restore_session=False,
                      max_epoch=100,
-                     steps_per_epoch=5000,
-                     batch_size=200,
+                     steps_per_epoch=steps_per_epoch,
+                     batch_size=batch_size,
                      experiment=experiment,
                      num_gen_rnn=50,
                      num_gen_feature=64)
@@ -69,7 +73,7 @@ for ds in datasets:
     new_samples.to_csv(f'temp_save_{ds}.csv', index=False)
 
     p = new_samples.copy()
-    p.columns = d.columns
+    d.columns = p.columns
     if ds == 'berka' or ds == 'census':
         p[p._get_numeric_data().columns] = p[p._get_numeric_data().columns].astype('int')
     if ds == 'creditcard':
@@ -87,8 +91,8 @@ for ds in datasets:
 
     try:
         os.remove('temp_save.csv')
-    except:
-        print('Could not remove temp_save.csv')
+    except Exception as e:
+        print(f'{e} -- Could not remove temp_save_{ds}.csv')
 
     experiment.end()
 
