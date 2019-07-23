@@ -64,11 +64,11 @@ for ds in datasets:
     except:
         model_path = f'model/{ds}_{project_name}'
 
-    try:
-        tgan.save(model_path, force=True)
-    except Exception as e:
-        print(f'{e}\nModel could not be saved')
-
+    # try:
+    #     tgan.save(model_path, force=True)
+    # except Exception as e:
+    #     print(f'{e}\nModel could not be saved')
+    #
     num_samples = 100000
     new_samples = tgan.sample(num_samples)
     new_samples.to_csv(f'temp_save_{ds}.csv', index=False)
