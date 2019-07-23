@@ -118,6 +118,7 @@ class GraphBuilder(ModelDescBase):
 
         x_fake = tf.concat(x_fake, axis=1)
         x_real = tf.concat(x_real, axis=1)
+        # print('x_real shape: ', x_real)
 
         with tf.name_scope("GAN_loss"):
             score_real = tf.sigmoid(logits_real)
@@ -127,25 +128,26 @@ class GraphBuilder(ModelDescBase):
             tf.summary.histogram('logits_real', logits_real)
             tf.summary.histogram('logits_fake', logits_fake)
 
-            with tf.name_scope("discrim"):
-                self.epsilon = tf.random_uniform(
-                    shape=[self.batch_size, 1, 1, 1],
-                    minval=0.,
-                    maxval=1.)
+            # with tf.name_scope("discrim"):
+            self.epsilon = tf.random_uniform(
+                shape=x_fake.shape,
+                minval=0.,
+                maxval=1.)
 
-                X_hat = x_real + self.epsilon * (x_fake - x_real)
-                D_X_hat = self.discriminator(X_hat)
-                grad_D_X_hat = tf.gradients(D_X_hat, [X_hat])[0]
-                red_idx = list(range(1, X_hat.shape.ndims))
-                slopes = tf.sqrt(tf.reduce_sum(tf.square(grad_D_X_hat), reduction_indices=red_idx))
-                gradient_penalty = tf.identity(tf.reduce_mean((slopes - 1.) ** 2), name='GP')
-                self.d_loss = tf.reduce_mean(logits_fake) - tf.reduce_mean(logits_real)
-                self.d_loss = self.d_loss + 4 * gradient_penalty
-                self.d_loss_sum = tf.summary.scalar("Discriminator_loss", self.d_loss)
-                self.gp_sum = tf.summary.scalar("Gradient_penalty", gradient_penalty)
+            X_hat = x_real + self.epsilon * (x_fake - x_real)
+            # print('X_hat shape: ', X_hat.shape)
+            D_X_hat = self.discriminator(X_hat)
+            grad_D_X_hat = tf.gradients(D_X_hat, [X_hat])[0]
+            red_idx = list(range(1, X_hat.shape.ndims))
+            slopes = tf.sqrt(tf.reduce_sum(tf.square(grad_D_X_hat), reduction_indices=red_idx))
+            gradient_penalty = tf.identity(tf.reduce_mean((slopes - 1.) ** 2), name='GP')
+            self.d_loss = tf.reduce_mean(logits_fake) - tf.reduce_mean(logits_real)
+            self.d_loss = self.d_loss + 10 * gradient_penalty
+            self.d_loss_sum = tf.summary.scalar("Discriminator_loss", self.d_loss)
+            self.gp_sum = tf.summary.scalar("Gradient_penalty", gradient_penalty)
 
-                self.d_loss_sum = tf.summary.scalar("Discriminator_loss", self.d_loss)
-                self.gp_sum = tf.summary.scalar("Gradient_penalty", gradient_penalty)
+            self.d_loss_sum = tf.summary.scalar("Discriminator_loss", self.d_loss)
+            self.gp_sum = tf.summary.scalar("Gradient_penalty", gradient_penalty)
 
             with tf.name_scope("gen"):
                 self.g_loss = -tf.reduce_mean(logits_fake)
@@ -404,23 +406,24 @@ class GraphBuilder(ModelDescBase):
 
         """
         logits = tf.concat(vecs, axis=1)
-        for i in range(self.num_dis_layers):
-            with tf.variable_scope('dis_fc{}'.format(i)):
-                if i == 0:
-                    logits = FullyConnected(
-                        'fc', logits, self.num_dis_hidden, nl=tf.identity,
-                        kernel_initializer=tf.truncated_normal_initializer(stddev=0.1)
-                    )
+        with tf.variable_scope('discrim'):
+            for i in range(self.num_dis_layers):
+                with tf.variable_scope('dis_fc{}'.format(i)):
+                    if i == 0:
+                        logits = FullyConnected(
+                            'fc', logits, self.num_dis_hidden, nl=tf.identity,
+                            kernel_initializer=tf.truncated_normal_initializer(stddev=0.1)
+                        )
 
-                else:
-                    logits = FullyConnected('fc', logits, self.num_dis_hidden, nl=tf.identity)
+                    else:
+                        logits = FullyConnected('fc', logits, self.num_dis_hidden, nl=tf.identity)
 
-                logits = tf.concat([logits, self.batch_diversity(logits)], axis=1)
-                logits = LayerNorm('ln', logits)
-                logits = Dropout(logits)
-                logits = tf.nn.leaky_relu(logits)
+                    logits = tf.concat([logits, self.batch_diversity(logits)], axis=1)
+                    logits = LayerNorm('ln', logits)
+                    logits = Dropout(logits)
+                    logits = tf.nn.leaky_relu(logits)
 
-        return FullyConnected('dis_fc_top', logits, 1, nl=tf.identity)
+            return FullyConnected('dis_fc_top', logits, 1, nl=tf.identity)
 
     @staticmethod
     def compute_kl(real, pred):
@@ -532,10 +535,11 @@ class GraphBuilder(ModelDescBase):
                         "self.metadata['details'][{}]['type'] must be either `category` or "
                         "`values`. Instead it was {}.".format(col_id, col_info['type'])
                     )
-
-        with tf.variable_scope('discrim'):
-            discrim_pos = self.discriminator(vecs_pos)
-            discrim_neg = self.discriminator(vecs_gen)
+        # with tf.variable_scope('discrim'):
+        # print('vecs pos: ', len(vecs_pos))
+        # print('vecs neg: ', len(vecs_gen))
+        discrim_pos = self.discriminator(vecs_pos)
+        discrim_neg = self.discriminator(vecs_gen)
 
         self.build_losses(discrim_pos, discrim_neg, vecs_gen, vecs_pos, extra_g=KL, l2_norm=self.l2norm)
         self.collect_variables()
@@ -707,7 +711,7 @@ class TGANModel:
             starting_epoch = 1
 
         action = 'k' if self.restore_session else None
-#         logger.set_logger_dir(self.log_dir, action=action)
+        # logger.set_logger_dir(self.log_dir, action=action)
 
         callbacks = []
         monitors = []
