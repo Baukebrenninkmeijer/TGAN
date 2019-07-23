@@ -710,8 +710,8 @@ class TGANModel:
             session_init = None
             starting_epoch = 1
 
-        action = 'k' if self.restore_session else None
-        # logger.set_logger_dir(self.log_dir, action=action)
+        action = 'k' if self.restore_session else 'd'
+        logger.set_logger_dir(self.log_dir, action=action)
 
         callbacks = []
         monitors = []
