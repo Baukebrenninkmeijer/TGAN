@@ -79,7 +79,7 @@ for ds in datasets:
     if ds == 'berka' or ds == 'census':
         p[p._get_numeric_data().columns] = p[p._get_numeric_data().columns].astype('int')
     if ds == 'creditcard':
-        p[['time', 'class']] = p[['time', 'class']].astype('int')
+        p[['Time', 'Class']] = p[['Time', 'Class']].astype('int')
 
     try:
         if os.path.exists('/mnt'):
