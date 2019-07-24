@@ -130,7 +130,7 @@ class GraphBuilder(ModelDescBase):
 
             # with tf.name_scope("discrim"):
             self.epsilon = tf.random_uniform(
-                shape=x_fake.shape,
+                shape=[self.batch_size, 1],
                 minval=0.,
                 maxval=1.)
 
