@@ -139,7 +139,6 @@ expdir/
 data/
 *.npz
 *.csv
-*.ipynb
 logs/
 model/
 docs/api/
