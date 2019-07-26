@@ -95,18 +95,18 @@ def cdf(data_r, data_f, xlabel, ylabel, ax=None):
 
     ax = ax if ax else plt.subplots()[1]
 
-    axis_font = {'size': '18'}
+    axis_font = {'size': '14'}
     ax.set_xlabel(xlabel, **axis_font)
     ax.set_ylabel(ylabel, **axis_font)
 
     ax.grid()
     ax.plot(x1, y, marker='o', linestyle='none', label='Real', ms=8)
     ax.plot(x2, y, marker='o', linestyle='none', label='Fake', alpha=0.5)
-
+    ax.tick_params(axis='both', which='major', labelsize=8)
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3)
 
     # ax.set_xticks(ind)
-    if len(data_r.unique()) < 20:
+    if data_r.dtypes == 'object':
         ax.set_xticklabels(data_r.value_counts().sort_index().index, rotation='vertical')
 
     if ax is None:
@@ -346,15 +346,14 @@ class DataEvaluator:
         self.fake = self.fake.sample(self.n_samples)
         assert len(self.real) == len(self.fake), f'len(real) != len(fake)'
 
-
     def plot_mean_std(self):
         fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-        fig.suptitle('Mean and STDs of numeric data', fontsize=16)
+        fig.suptitle('Absolute Log Mean and STDs of numeric data\n', fontsize=16)
 
         real = self.real._get_numeric_data()
         fake = self.fake._get_numeric_data()
-        real_mean = np.log10(np.add(real.mean().values, 1e-5))
-        fake_mean = np.log10(np.add(fake.mean().values, 1e-5))
+        real_mean = np.log10(np.add(abs(real.mean()).values, 1e-5))
+        fake_mean = np.log10(np.add(abs(fake.mean()).values, 1e-5))
         sns.scatterplot(x=real_mean,
                         y=fake_mean,
                         ax=ax[0])
@@ -380,19 +379,24 @@ class DataEvaluator:
         nr_charts = len(self.real.columns)
         nr_cols = 4
         nr_rows = max(1, nr_charts // nr_cols)
-        fig, ax = plt.subplots(nr_rows, nr_cols, figsize=(16, 6 * nr_rows))
+        nr_rows = nr_rows + 1 if nr_charts % nr_cols != 0 else nr_rows
+
+
+        # Increase the length of plots if the labels are long
+        lengths = []
+        for d in self.real.select_dtypes(include=['object']):
+            lengths.append(max([len(x.strip()) for x in self.real[d].unique().tolist()]))
+        max_len = max(lengths)
+
+        row_height = 6 + (max_len // 30)
+        fig, ax = plt.subplots(nr_rows, nr_cols, figsize=(16, row_height * nr_rows))
         fig.suptitle('Cumulative Sums per feature', fontsize=16)
         axes = ax.flatten()
         for i, col in enumerate(self.real.columns):
-            # if col in self.categorical_columns:
-            #     r = self.real[col]
-            #     f = self.fake.iloc[:, self.real.columns.tolist().index(col)]
-            #     categorical_distribution(r, f, col, '% of Total', ax=axes[i])
-            # else:
             r = self.real[col]
             f = self.fake.iloc[:, self.real.columns.tolist().index(col)]
             cdf(r, f, col, 'Cumsum', ax=axes[i])
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0.02, 1, 0.98])
         plt.show()
 
     def plot_correlation_difference(self, plot_diff=True, *args, **kwargs):
@@ -467,38 +471,54 @@ class DataEvaluator:
         corr, p = self.comparison_metric(pca_r.explained_variance_, pca_f.explained_variance_)
         return corr
 
-    def fit_classifiers(self):
+    def fit_estimators(self):
         """
-        Fit self.r_classifiers and self.f_classifiers to real and fake data, respectively.
+        Fit self.r_estimators and self.f_estimators to real and fake data, respectively.
         """
         if self.verbose:
             print(f'\nFitting real')
-        for i, c in enumerate(self.r_classifiers):
+        for i, c in enumerate(self.r_estimators):
             if self.verbose:
                 print(f'{i + 1}: {type(c).__name__}')
             c.fit(self.real_x_train, self.real_y_train)
 
         if self.verbose:
             print(f'\nFitting fake')
-        for i, c in enumerate(self.f_classifiers):
+        for i, c in enumerate(self.f_estimators):
             if self.verbose:
                 print(f'{i + 1}: {type(c).__name__}')
             c.fit(self.fake_x_train, self.fake_y_train)
 
-    def score_classifiers(self):
+    def score_estimators(self):
         """
-        Get F1 scores of self.r_classifiers and self.f_classifiers on the fake and real data, respectively.
+        Get F1 scores of self.r_estimators and self.f_estimators on the fake and real data, respectively.
         :return:
         """
-        r2r = [f1_score(self.real_y_test, clf.predict(self.real_x_test), average='micro') for clf in self.r_classifiers]
-        f2f = [f1_score(self.fake_y_test, clf.predict(self.fake_x_test), average='micro') for clf in self.f_classifiers]
+        from sklearn.metrics import mean_squared_error
 
-        # Calculate test set accuracies on the other dataset
-        r2f = [f1_score(self.fake_y_train, clf.predict(self.fake_x_train), average='micro') for clf in self.r_classifiers]
-        f2r = [f1_score(self.real_y_train, clf.predict(self.real_x_train), average='micro') for clf in self.f_classifiers]
-        index = [f'real_data_{classifier}_F1' for classifier in self.classifier_names] + \
-                [f'fake_data_{classifier}_F1' for classifier in self.classifier_names]
-        results = pd.DataFrame({'real': r2r + r2f, 'fake': f2r + f2f}, index=index)
+        if self.target_type == 'class':
+            r2r = [f1_score(self.real_y_test, clf.predict(self.real_x_test), average='micro') for clf in self.r_estimators]
+            f2f = [f1_score(self.fake_y_test, clf.predict(self.fake_x_test), average='micro') for clf in self.f_estimators]
+
+            # Calculate test set accuracies on the other dataset
+            r2f = [f1_score(self.fake_y_test, clf.predict(self.fake_x_test), average='micro') for clf in self.r_estimators]
+            f2r = [f1_score(self.real_y_test, clf.predict(self.real_x_test), average='micro') for clf in self.f_estimators]
+            index = [f'real_data_{classifier}_F1' for classifier in self.estimator_names] + \
+                    [f'fake_data_{classifier}_F1' for classifier in self.estimator_names]
+            results = pd.DataFrame({'real': r2r + r2f, 'fake': f2r + f2f}, index=index)
+
+        elif self.target_type == 'regr':
+            r2r = [mean_squared_error(self.real_y_test, clf.predict(self.real_x_test)) for clf in self.r_estimators]
+            f2f = [mean_squared_error(self.fake_y_test, clf.predict(self.fake_x_test)) for clf in self.f_estimators]
+
+            # Calculate test set accuracies on the other dataset
+            r2f = [mean_squared_error(self.fake_y_test, clf.predict(self.fake_x_test)) for clf in self.r_estimators]
+            f2r = [mean_squared_error(self.real_y_test, clf.predict(self.real_x_test)) for clf in self.f_estimators]
+            index = [f'real_data_{classifier}_F1' for classifier in self.estimator_names] + \
+                    [f'fake_data_{classifier}_F1' for classifier in self.estimator_names]
+            results = pd.DataFrame({'real': r2r + r2f, 'fake': f2r + f2f}, index=index)
+        else:
+            raise Exception(f'self.target_type should be either \'class\' or \'regr\', but is {self.target_type}.')
         return results
 
     def visual_evaluation(self, plot=True, **kwargs):
@@ -556,68 +576,89 @@ class DataEvaluator:
             values = corr_df.values
             values = values[~np.eye(values.shape[0], dtype=bool)].reshape(values.shape[0],-1)
             total_metrics[ds_name] = values.flatten()
+
+        self.correlation_correlations = total_metrics
         corr, p = self.comparison_metric(total_metrics['real'], total_metrics['fake'])
         if self.verbose:
             print('\nColumn correlation between datasets:')
             print(total_metrics.to_string())
         return corr
 
-    def classifier_evaluation(self, target_col, n_samples=None):
+    def estimator_evaluation(self, target_col, target_type='class', n_samples=None):
         self.target_col = target_col
-        if n_samples is None:
-            n_samples = min(len(self.real), len(self.fake))
-        real = self.real[:n_samples]
-        fake = self.fake[:n_samples]
+        self.target_type = target_type
 
         # Convert both datasets to numerical representations and split x and  y
-        real_x = numerical_encoding(real.drop([target_col], axis=1), nominal_columns=self.categorical_columns)
+        real_x = numerical_encoding(self.real.drop([target_col], axis=1), nominal_columns=self.categorical_columns)
         columns = sorted(real_x.columns.tolist())
         real_x = real_x[columns]
-        fake_x = numerical_encoding(fake.drop([target_col], axis=1), nominal_columns=self.categorical_columns)
+        fake_x = numerical_encoding(self.fake.drop([target_col], axis=1), nominal_columns=self.categorical_columns)
         for col in columns:
             if col not in fake_x.columns.tolist():
                 fake_x[col] = 0
         fake_x = fake_x[columns]
+        assert real_x.columns.tolist() == fake_x.columns.tolist(), f'real and fake columns are different: \n{real_x.columns}\n{fake_x.columns}'
 
-        # Encode real and fake target the same
-        real_y, uniques = pd.factorize(real[target_col])
-        mapping = {key: value for value, key in enumerate(uniques)}
-        fake_y = [mapping.get(key) for key in fake[target_col].tolist()]
+        if self.target_type == 'class':
+            # Encode real and fake target the same
+            real_y, uniques = pd.factorize(self.real[target_col])
+            mapping = {key: value for value, key in enumerate(uniques)}
+            fake_y = [mapping.get(key) for key in self.fake[target_col].tolist()]
+        else:
+            real_y = self.real[target_col]
+            fake_y = self.fake[target_col]
 
         # split real and fake into train and test sets
         self.real_x_train, self.real_x_test, self.real_y_train, self.real_y_test = train_test_split(real_x, real_y, test_size=0.2)
         self.fake_x_train, self.fake_x_test, self.fake_y_train, self.fake_y_test = train_test_split(fake_x, fake_y, test_size=0.2)
 
-        self.classifiers = [
-            SGDClassifier(max_iter=100, tol=1e-3),
-            LogisticRegression(multi_class='auto', solver='lbfgs', max_iter=500),
-            GradientBoostingClassifier(),
-            DecisionTreeClassifier(),
-            MLPClassifier([50, 50], solver='adam', activation='relu', learning_rate='adaptive'),
-        ]
+        from sklearn.ensemble import RandomForestRegressor
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.linear_model import Lasso
+        from sklearn.linear_model import Ridge
+        from sklearn.linear_model import ElasticNet
 
-        self.r_classifiers = copy.deepcopy(self.classifiers)
-        self.f_classifiers = copy.deepcopy(self.classifiers)
-        self.classifier_names = [type(clf).__name__ for clf in self.classifiers]
+        if target_type == 'regr':
+            self.estimators = [
+                RandomForestRegressor(n_estimators=20, max_depth=5),
+                Lasso(),
+                Ridge(alpha=1.0),
+                ElasticNet(),
+            ]
+        elif target_type == 'class':
+            self.estimators = [
+                SGDClassifier(max_iter=100, tol=1e-3),
+                LogisticRegression(multi_class='auto', solver='lbfgs', max_iter=500),
+                RandomForestClassifier(),
+                DecisionTreeClassifier(),
+                MLPClassifier([50, 50], solver='adam', activation='relu', learning_rate='adaptive'),
+            ]
+        else:
+            raise Exception(f'target_type must be \'regr\' or \'class\'')
 
-        for classifier in self.classifiers:
-            assert hasattr(classifier, 'fit')
-            assert hasattr(classifier, 'score')
 
-        self.fit_classifiers()
-        classifier_scores = self.score_classifiers()
+        self.r_estimators = copy.deepcopy(self.estimators)
+        self.f_estimators = copy.deepcopy(self.estimators)
+        self.estimator_names = [type(clf).__name__ for clf in self.estimators]
+
+        for estimator in self.estimators:
+            assert hasattr(estimator, 'fit')
+            assert hasattr(estimator, 'score')
+
+        self.fit_estimators()
+        self.estimators_scores = self.score_estimators()
         if self.verbose:
-            print('\nClassifier F1-scores:')
-            print(classifier_scores.to_string())
-        corr, p = self.comparison_metric(classifier_scores['real'], classifier_scores['fake'])
+            print('\nClassifier F1-scores:') if self.target_type == 'class' else print('\nRegressor MSE-scores:')
+            print(self.estimators_scores.to_string())
+        corr, p = self.comparison_metric(self.estimators_scores['real'], self.estimators_scores['fake'])
         return corr
 
-    def evaluate(self, target_col, n_samples=None, metric=None, verbose=None):
+    def evaluate(self, target_col, target_type='class', metric=None, verbose=None):
         """
         Determine correlation between attributes from the real and fake dataset using a given metric.
         All metrics from scipy.stats are available.
-        :param target_col: column to use for predictions with classifiers
-        :param n_samples: the number of samples to use for the classifiers. Training time scales mostly linear
+        :param target_col: column to use for predictions with estimators
+        :param n_samples: the number of samples to use for the estimators. Training time scales mostly linear
         :param metric: scoring metric for the attributes. By default Kendall Tau ranking is used. Alternatives
             include Spearman rho (scipy.stats.spearmanr) ranking.
         """
@@ -625,11 +666,6 @@ class DataEvaluator:
             self.verbose = verbose
         if metric is not None:
             self.comparison_metric = metric
-        # if n_samples is not None:
-        #     assert n_samples < self.n_samples
-        #     self.n_samples = n_samples
-        #     self.real = self.real.sample(n_samples)
-        #     self.fake = self.fake.sample(n_samples)
 
         warnings.filterwarnings(action='ignore', category=ConvergenceWarning)
         pd.options.display.float_format = '{:,.4f}'.format
@@ -639,24 +675,20 @@ class DataEvaluator:
         basic_statistical = self.statistical_evaluation()  # 2 columns -> Kendall Tau -> correlation coefficient
         correlation_correlation = self.correlation_correlation()  # 2 columns -> Kendall Tau -> Correlation coefficient
         column_correlation = column_correlations(self.real, self.fake, self.categorical_columns)  # 1 column -> Mean
-        classifiers = self.classifier_evaluation(target_col=target_col, n_samples=self.n_samples)  # 1 2 columns -> Kendall Tau -> Correlation coefficient
+        estimators = self.estimator_evaluation(target_col=target_col, n_samples=self.n_samples, target_type=target_type)  # 1 2 columns -> Kendall Tau -> Correlation coefficient
         pca_variance = self.pca_correlation()  # 1 number
 
         all_results = {
             'basic statistics': basic_statistical,
             'Correlation column correlations': correlation_correlation,
             'Mean Correlation between fake and real columns': column_correlation,
-            'Mean correlation classifier F1': classifiers,
+            'Mean correlation classifier F1': estimators,
             'Correlation 5 PCA components': pca_variance,
         }
-        total_result = np.product(list(all_results.values()))
+        total_result = np.mean(list(all_results.values()))
         all_results['Duplicate data between sets'] = len(self.get_duplicates())
         all_results['Total Result'] = total_result
         all_results_df = pd.DataFrame({'Result': list(all_results.values())}, index=list(all_results.keys()))
 
         print(f'\nResults:\nNumber of duplicate rows is ignored for total score.')
-        # for metric, value in all_results.items():
-        #     print(f'{metric}: {value}')
         print(all_results_df.to_string())
-        # The total is the product of all the other scores in total_result
-        # print(f'Total score: {total_result}')
