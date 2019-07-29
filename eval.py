@@ -13,7 +13,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 import scipy.stats as stats
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, mean_squared_error
 from sklearn.decomposition import PCA
 from dython.nominal import *
 import warnings
@@ -152,12 +152,17 @@ def categorical_distribution(real, fake, xlabel, ylabel, col=None, ax=None):
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3)
 
 
-def mean_absolute_error(ma, mb):
-    return np.mean(np.abs(np.subtract(ma, mb)))
+def mean_absolute_error(y_true, y_pred):
+    return np.mean(np.abs(np.subtract(y_true, y_pred)))
 
 
-def euclidean_distance(ma, mb):
-    return np.sqrt(np.sum(np.power(np.subtract(ma, mb), 2)))
+def euclidean_distance(y_true, y_pred):
+    return np.sqrt(np.sum(np.power(np.subtract(y_true, y_pred), 2)))
+
+
+def mean_absolute_percentage_error(y_true, y_pred):
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    return np.mean(np.abs((y_true - y_pred) / y_true))
 
 
 def column_correlations(dataset_a, dataset_b, categorical_columns, theil_u=True):
@@ -382,12 +387,13 @@ class DataEvaluator:
         nr_rows = max(1, nr_charts // nr_cols)
         nr_rows = nr_rows + 1 if nr_charts % nr_cols != 0 else nr_rows
 
-
+        max_len = 0
         # Increase the length of plots if the labels are long
-        lengths = []
-        for d in self.real.select_dtypes(include=['object']):
-            lengths.append(max([len(x.strip()) for x in self.real[d].unique().tolist()]))
-        max_len = max(lengths)
+        if not self.real.select_dtypes(include=['object']).empty:
+            lengths = []
+            for d in self.real.select_dtypes(include=['object']):
+                lengths.append(max([len(x.strip()) for x in self.real[d].unique().tolist()]))
+            max_len = max(lengths)
 
         row_height = 6 + (max_len // 30)
         fig, ax = plt.subplots(nr_rows, nr_cols, figsize=(16, row_height * nr_rows))
@@ -416,6 +422,10 @@ class DataEvaluator:
             distance_func = euclidean_distance
         elif how == 'mae':
             distance_func = mean_absolute_error
+        elif how == 'rmse':
+            def rmse(y, y_hat):
+                return np.sqrt(mean_squared_error(y, y_hat))
+            distance_func = rmse
 
         assert distance_func is not None, f'Distance measure was None. Please select a measure from [euclidean, mae]'
 
@@ -469,8 +479,9 @@ class DataEvaluator:
             results = pd.DataFrame({'real': pca_r.explained_variance_, 'fake': pca_f.explained_variance_})
             print(f'\nTop 5 PCA components:')
             print(results.to_string())
-        slope, int, corr, p, _ = scipy.stats.linregress(pca_r.explained_variance_, pca_f.explained_variance_)
-        return corr
+        # slope, intersect, corr, p, _ = scipy.stats.linregress(pca_r.explained_variance_, pca_f.explained_variance_)
+        pca_error = mean_absolute_percentage_error(pca_r.explained_variance_,  pca_f.explained_variance_)
+        return 1 - pca_error
 
     def fit_estimators(self):
         """
@@ -585,12 +596,13 @@ class DataEvaluator:
             print(total_metrics.to_string())
         return corr
 
-    def estimator_evaluation(self, target_col, target_type='class', n_samples=None):
+    def estimator_evaluation(self, target_col, target_type='class'):
         self.target_col = target_col
         self.target_type = target_type
 
         # Convert both datasets to numerical representations and split x and  y
         real_x = numerical_encoding(self.real.drop([target_col], axis=1), nominal_columns=self.categorical_columns)
+
         columns = sorted(real_x.columns.tolist())
         real_x = real_x[columns]
         fake_x = numerical_encoding(self.fake.drop([target_col], axis=1), nominal_columns=self.categorical_columns)
@@ -598,6 +610,7 @@ class DataEvaluator:
             if col not in fake_x.columns.tolist():
                 fake_x[col] = 0
         fake_x = fake_x[columns]
+
         assert real_x.columns.tolist() == fake_x.columns.tolist(), f'real and fake columns are different: \n{real_x.columns}\n{fake_x.columns}'
 
         if self.target_type == 'class':
@@ -605,9 +618,11 @@ class DataEvaluator:
             real_y, uniques = pd.factorize(self.real[target_col])
             mapping = {key: value for value, key in enumerate(uniques)}
             fake_y = [mapping.get(key) for key in self.fake[target_col].tolist()]
-        else:
+        elif self.target_type == 'regr':
             real_y = self.real[target_col]
             fake_y = self.fake[target_col]
+        else:
+            raise Exception(f'Target Type must be regr or class')
 
         # split real and fake into train and test sets
         self.real_x_train, self.real_x_test, self.real_y_train, self.real_y_test = train_test_split(real_x, real_y, test_size=0.2)
@@ -679,15 +694,24 @@ class DataEvaluator:
         estimators = self.estimator_evaluation(target_col=target_col, n_samples=self.n_samples, target_type=target_type)  # 1 2 columns -> Kendall Tau -> Correlation coefficient
         pca_variance = self.pca_correlation()  # 1 number
 
+
+        miscellaneous = {}
+        miscellaneous['Column Correlation Distance RMSE'] = self.correlation_distance(how='rmse')
+        miscellaneous['Column Correlation distance MAE'] = self.correlation_distance(how='mae')
+
+        miscellaneous['Duplicate rows between sets'] = len(self.get_duplicates())
+        miscellaneous_df = pd.DataFrame({'Result': list(miscellaneous.values())}, index=list(miscellaneous.keys()))
+        print(f'\nMiscellaneous results:')
+        print(miscellaneous_df.to_string())
+
         all_results = {
             'basic statistics': basic_statistical,
             'Correlation column correlations': correlation_correlation,
             'Mean Correlation between fake and real columns': column_correlation,
             'Mean correlation classifier F1': estimators,
-            'Correlation 5 PCA components': pca_variance,
+            '1 - MAPE 5 PCA components': pca_variance,
         }
         total_result = np.mean(list(all_results.values()))
-        all_results['Duplicate data between sets'] = len(self.get_duplicates())
         all_results['Total Result'] = total_result
         all_results_df = pd.DataFrame({'Result': list(all_results.values())}, index=list(all_results.keys()))
 
