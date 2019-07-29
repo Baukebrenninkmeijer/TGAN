@@ -3,6 +3,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
+import scipy
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 import copy
@@ -468,7 +469,7 @@ class DataEvaluator:
             results = pd.DataFrame({'real': pca_r.explained_variance_, 'fake': pca_f.explained_variance_})
             print(f'\nTop 5 PCA components:')
             print(results.to_string())
-        corr, p = self.comparison_metric(pca_r.explained_variance_, pca_f.explained_variance_)
+        slope, int, corr, p, _ = scipy.stats.linregress(pca_r.explained_variance_, pca_f.explained_variance_)
         return corr
 
     def fit_estimators(self):
@@ -647,9 +648,9 @@ class DataEvaluator:
 
         self.fit_estimators()
         self.estimators_scores = self.score_estimators()
-        if self.verbose:
-            print('\nClassifier F1-scores:') if self.target_type == 'class' else print('\nRegressor MSE-scores:')
-            print(self.estimators_scores.to_string())
+        # if self.verbose:
+        print('\nClassifier F1-scores:') if self.target_type == 'class' else print('\nRegressor MSE-scores:')
+        print(self.estimators_scores.to_string())
         corr, p = self.comparison_metric(self.estimators_scores['real'], self.estimators_scores['fake'])
         return corr
 
