@@ -12,7 +12,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import GradientBoostingClassifier
-import scipy.stats as stats
+from scipy.spatial.distance import cdist
 from sklearn.metrics import f1_score, mean_squared_error
 from sklearn.decomposition import PCA
 from dython.nominal import *
@@ -163,6 +163,10 @@ def euclidean_distance(y_true, y_pred):
 def mean_absolute_percentage_error(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     return np.mean(np.abs((y_true - y_pred) / y_true))
+
+
+def rmse(y, y_hat):
+    return np.sqrt(mean_squared_error(y, y_hat))
 
 
 def column_correlations(dataset_a, dataset_b, categorical_columns, theil_u=True):
@@ -329,7 +333,7 @@ def skip_diag_strided(A):
 
 
 class DataEvaluator:
-    def __init__(self, real, fake, unique_thresh=20, metric='kendalltau', verbose=False, n_samples=None):
+    def __init__(self, real, fake, unique_thresh=20, metric='pearsonr', verbose=False, n_samples=None):
         if isinstance(real, np.ndarray):
             real = pd.DataFrame(real)
             fake = pd.DataFrame(fake)
@@ -423,8 +427,6 @@ class DataEvaluator:
         elif how == 'mae':
             distance_func = mean_absolute_error
         elif how == 'rmse':
-            def rmse(y, y_hat):
-                return np.sqrt(mean_squared_error(y, y_hat))
             distance_func = rmse
 
         assert distance_func is not None, f'Distance measure was None. Please select a measure from [euclidean, mae]'
@@ -524,8 +526,8 @@ class DataEvaluator:
             f2f = [mean_squared_error(self.fake_y_test, clf.predict(self.fake_x_test)) for clf in self.f_estimators]
 
             # Calculate test set accuracies on the other dataset
-            r2f = [mean_squared_error(self.fake_y_test, clf.predict(self.fake_x_test)) for clf in self.r_estimators]
-            f2r = [mean_squared_error(self.real_y_test, clf.predict(self.real_x_test)) for clf in self.f_estimators]
+            r2f = [rmse(self.fake_y_test, clf.predict(self.fake_x_test)) for clf in self.r_estimators]
+            f2r = [rmse(self.real_y_test, clf.predict(self.real_x_test)) for clf in self.f_estimators]
             index = [f'real_data_{classifier}_F1' for classifier in self.estimator_names] + \
                     [f'fake_data_{classifier}_F1' for classifier in self.estimator_names]
             results = pd.DataFrame({'real': r2r + r2f, 'fake': f2r + f2f}, index=index)
@@ -539,20 +541,6 @@ class DataEvaluator:
             self.plot_cumsums()
             self.plot_correlation_difference(**kwargs)
             self.plot_2d()
-
-        # values = []
-        # metrics = [
-        #     'Nr. of duplicate rows',
-        #     'Euclidean distance correlations',
-        #     'MAE distance correlations',
-        # ]
-        # values.append(len(self.get_duplicates()))
-        # values.append(self.correlation_distance(how='euclidean'))
-        # values.append(self.correlation_distance(how='mae'))
-        #
-        # summary = pd.DataFrame({'values': values})
-        # summary.index = metrics
-        # return summary
 
     def statistical_evaluation(self):
         total_metrics = pd.DataFrame()
@@ -577,7 +565,7 @@ class DataEvaluator:
         if self.verbose:
             print('\nBasic statistical attributes:')
             print(total_metrics.to_string())
-        corr, p = self.comparison_metric(total_metrics['real'], total_metrics['fake'])
+        corr, p = stats.kendalltau(total_metrics['real'], total_metrics['fake'])
         return corr
 
     def correlation_correlation(self):
@@ -643,7 +631,7 @@ class DataEvaluator:
             ]
         elif target_type == 'class':
             self.estimators = [
-                SGDClassifier(max_iter=100, tol=1e-3),
+                # SGDClassifier(max_iter=100, tol=1e-3),
                 LogisticRegression(multi_class='auto', solver='lbfgs', max_iter=500),
                 RandomForestClassifier(),
                 DecisionTreeClassifier(),
@@ -669,6 +657,21 @@ class DataEvaluator:
         corr, p = self.comparison_metric(self.estimators_scores['real'], self.estimators_scores['fake'])
         return corr
 
+    def row_distance(self, n=1000):
+        real = numerical_encoding(self.real, nominal_columns=self.categorical_columns)
+        fake = numerical_encoding(self.fake, nominal_columns=self.categorical_columns)
+
+        for column in real.columns.tolist():
+            if column not in self.categorical_columns:
+                real[column] = (real[column] - real[column].mean()) / real[column].std()
+                fake[column] = (fake[column] - fake[column].mean()) / fake[column].std()
+
+        assert real.columns.tolist() == fake.columns.tolist()
+
+        distances = cdist(real[:n], fake[:n])
+        return distances
+
+
     def evaluate(self, target_col, target_type='class', metric=None, verbose=None):
         """
         Determine correlation between attributes from the real and fake dataset using a given metric.
@@ -688,10 +691,10 @@ class DataEvaluator:
 
         print(f'\nCorrelation metric: {self.comparison_metric.__name__}')
 
-        basic_statistical = self.statistical_evaluation()  # 2 columns -> Kendall Tau -> correlation coefficient
+        basic_statistical = self.statistical_evaluation()  # 2 columns -> Corr -> correlation coefficient
         correlation_correlation = self.correlation_correlation()  # 2 columns -> Kendall Tau -> Correlation coefficient
         column_correlation = column_correlations(self.real, self.fake, self.categorical_columns)  # 1 column -> Mean
-        estimators = self.estimator_evaluation(target_col=target_col, n_samples=self.n_samples, target_type=target_type)  # 1 2 columns -> Kendall Tau -> Correlation coefficient
+        estimators = self.estimator_evaluation(target_col=target_col, target_type=target_type)  # 1 2 columns -> Kendall Tau -> Correlation coefficient
         pca_variance = self.pca_correlation()  # 1 number
 
 
