@@ -1,25 +1,23 @@
+import copy
+import warnings
+import logging
 import pandas as pd
+import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-import numpy as np
 from scipy import stats
-import scipy
+from scipy.spatial.distance import cdist
+from dython.nominal import *
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
-import copy
-from sklearn.linear_model import SGDClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.ensemble import GradientBoostingClassifier
-from scipy.spatial.distance import cdist
-from sklearn.metrics import f1_score, mean_squared_error
 from sklearn.decomposition import PCA
-from dython.nominal import *
-import warnings
+from sklearn.metrics import f1_score, mean_squared_error
 from sklearn.exceptions import ConvergenceWarning
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.linear_model import Lasso, Ridge, ElasticNet, LogisticRegression
 
-import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -333,7 +331,7 @@ def skip_diag_strided(A):
 
 
 class DataEvaluator:
-    def __init__(self, real, fake, unique_thresh=20, metric='pearsonr', verbose=False, n_samples=None):
+    def __init__(self, real, fake, unique_thresh=55, metric='pearsonr', verbose=False, n_samples=None):
         if isinstance(real, np.ndarray):
             real = pd.DataFrame(real)
             fake = pd.DataFrame(fake)
@@ -350,8 +348,10 @@ class DataEvaluator:
 
         if n_samples is None:
             self.n_samples = min(len(self.real), len(self.fake))
-        else:
+        elif len(fake) >= n_samples and len(real) >= n_samples:
             self.n_samples = n_samples
+        else:
+            raise Exception(f'Make sure n_samples < len(fake/real). len(real): {len(real)}, len(fake): {len(fake)}')
         self.real = self.real.sample(self.n_samples)
         self.fake = self.fake.sample(self.n_samples)
         assert len(self.real) == len(self.fake), f'len(real) != len(fake)'
@@ -616,12 +616,6 @@ class DataEvaluator:
         self.real_x_train, self.real_x_test, self.real_y_train, self.real_y_test = train_test_split(real_x, real_y, test_size=0.2)
         self.fake_x_train, self.fake_x_test, self.fake_y_train, self.fake_y_test = train_test_split(fake_x, fake_y, test_size=0.2)
 
-        from sklearn.ensemble import RandomForestRegressor
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.linear_model import Lasso
-        from sklearn.linear_model import Ridge
-        from sklearn.linear_model import ElasticNet
-
         if target_type == 'regr':
             self.estimators = [
                 RandomForestRegressor(n_estimators=20, max_depth=5),
@@ -654,23 +648,35 @@ class DataEvaluator:
         # if self.verbose:
         print('\nClassifier F1-scores:') if self.target_type == 'class' else print('\nRegressor MSE-scores:')
         print(self.estimators_scores.to_string())
-        corr, p = self.comparison_metric(self.estimators_scores['real'], self.estimators_scores['fake'])
-        return corr
+        # corr, p = self.comparison_metric(self.estimators_scores['real'], self.estimators_scores['fake'])
+        mean = mean_absolute_percentage_error(self.estimators_scores['real'], self.estimators_scores['fake'])
+        return 1 - mean
 
-    def row_distance(self, n=1000):
+    def row_distance(self, n=None):
+        if n is None:
+            n = len(self.real)
         real = numerical_encoding(self.real, nominal_columns=self.categorical_columns)
         fake = numerical_encoding(self.fake, nominal_columns=self.categorical_columns)
 
+        columns = sorted(real.columns.tolist())
+        real = real[columns]
+
+        for col in columns:
+            if col not in fake.columns.tolist():
+                fake[col] = 0
+        fake = fake[columns]
+
         for column in real.columns.tolist():
-            if column not in self.categorical_columns:
+            if len(real[column].unique()) > 2:
                 real[column] = (real[column] - real[column].mean()) / real[column].std()
                 fake[column] = (fake[column] - fake[column].mean()) / fake[column].std()
-
         assert real.columns.tolist() == fake.columns.tolist()
 
         distances = cdist(real[:n], fake[:n])
-        return distances
-
+        min_distances = np.min(distances, axis=1)
+        min_mean = np.mean(min_distances)
+        min_std = np.std(min_distances)
+        return min_mean, min_std
 
     def evaluate(self, target_col, target_type='class', metric=None, verbose=None):
         """
@@ -696,13 +702,15 @@ class DataEvaluator:
         column_correlation = column_correlations(self.real, self.fake, self.categorical_columns)  # 1 column -> Mean
         estimators = self.estimator_evaluation(target_col=target_col, target_type=target_type)  # 1 2 columns -> Kendall Tau -> Correlation coefficient
         pca_variance = self.pca_correlation()  # 1 number
-
+        nearest_neighbor = self.row_distance(n=20000)
 
         miscellaneous = {}
         miscellaneous['Column Correlation Distance RMSE'] = self.correlation_distance(how='rmse')
         miscellaneous['Column Correlation distance MAE'] = self.correlation_distance(how='mae')
 
         miscellaneous['Duplicate rows between sets'] = len(self.get_duplicates())
+        miscellaneous['nearest neighbor mean'] = nearest_neighbor[0]
+        miscellaneous['nearest neighbor std'] = nearest_neighbor[1]
         miscellaneous_df = pd.DataFrame({'Result': list(miscellaneous.values())}, index=list(miscellaneous.keys()))
         print(f'\nMiscellaneous results:')
         print(miscellaneous_df.to_string())
@@ -711,7 +719,7 @@ class DataEvaluator:
             'basic statistics': basic_statistical,
             'Correlation column correlations': correlation_correlation,
             'Mean Correlation between fake and real columns': column_correlation,
-            'Mean correlation classifier F1': estimators,
+            '1 - MAPE Estimator results': estimators,
             '1 - MAPE 5 PCA components': pca_variance,
         }
         total_result = np.mean(list(all_results.values()))
