@@ -60,7 +60,7 @@ def plot_correlation_difference(real: pd.DataFrame, fake: pd.DataFrame, plot_dif
         diff = abs(real_corr - fake_corr)
         sns.set(style="white")
         cmap = sns.diverging_palette(220, 10, as_cmap=True)
-        sns.heatmap(diff, ax=ax[2], cmap=cmap, vmax=.3, square=True, annot=kwargs.get('annot', True), center=0,
+        sns.heatmap(diff, ax=ax[2], cmap=cmap, vmax=.3, annot=kwargs.get('annot', True), center=0,
                     linewidths=.5, cbar_kws={"shrink": .5}, fmt='.2f')
 
     titles = ['Real', 'Fake', 'Difference'] if plot_diff else ['Real', 'Fake']
@@ -264,7 +264,7 @@ def associations(dataset, nominal_columns=None, mark_columns=False, theil_u=Fals
         cmap = sns.diverging_palette(220, 10, as_cmap=True)
         sns.set(style="white")
         sns.heatmap(corr, annot=kwargs.get('annot', True), fmt=kwargs.get('fmt', '.2f'), cmap=cmap, vmax=1, center=0,
-                    square=True, linewidths=.5, cbar_kws={"shrink": .5}, ax=kwargs.get('ax', None))
+                   linewidths=.5, cbar_kws={"shrink": .5}, ax=kwargs.get('ax', None))
         if kwargs.get('ax') is None:
             plt.show()
     if return_results:
@@ -648,9 +648,12 @@ class DataEvaluator:
         # if self.verbose:
         print('\nClassifier F1-scores:') if self.target_type == 'class' else print('\nRegressor MSE-scores:')
         print(self.estimators_scores.to_string())
-        # corr, p = self.comparison_metric(self.estimators_scores['real'], self.estimators_scores['fake'])
-        mean = mean_absolute_percentage_error(self.estimators_scores['real'], self.estimators_scores['fake'])
-        return 1 - mean
+        if self.target_type == 'regr':
+            corr, p = self.comparison_metric(self.estimators_scores['real'], self.estimators_scores['fake'])
+            return corr
+        elif self.target_type == 'class':
+            mean = mean_absolute_percentage_error(self.estimators_scores['real'], self.estimators_scores['fake'])
+            return 1 - mean
 
     def row_distance(self, n=None):
         if n is None:
