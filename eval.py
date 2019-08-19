@@ -383,7 +383,7 @@ def plot_mean_std_comparison(evaluators):
 
 def plot_mean_std(real, fake, ax=None):
     if ax is None:
-        fig, ax = plt.subplots(1, 2, figsize=(10, 5))[1]
+        fig, ax = plt.subplots(1, 2, figsize=(10, 5))
         fig.suptitle('Absolute Log Mean and STDs of numeric data\n', fontsize=16)
 
     real = real._get_numeric_data()
