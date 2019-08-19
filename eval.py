@@ -43,7 +43,7 @@ def plot_var_cor(x, ax=None, ret=False, *args, **kwargs):
         return corr
 
 
-def plot_correlation_difference(real: pd.DataFrame, fake: pd.DataFrame, plot_diff=True, cat_cols=None, *args, **kwargs):
+def plot_correlation_difference(real: pd.DataFrame, fake: pd.DataFrame, plot_diff=True, cat_cols=None, **kwargs):
     if cat_cols is None:
         cat_cols = real.select_dtypes(['object', 'category'])
     if plot_diff:
@@ -69,6 +69,43 @@ def plot_correlation_difference(real: pd.DataFrame, fake: pd.DataFrame, plot_dif
         ax[i].set_title(label, **title_font)
     plt.tight_layout()
     plt.show()
+
+
+def plot_correlation_comparison(evaluators, **kwargs):
+    nr_plots = len(evaluators) + 1
+    fig, ax = plt.subplots(2, nr_plots, figsize=(4 * nr_plots, 7))
+    flat_ax = ax.flatten()
+    fake_corr = []
+    real_corr = associations(evaluators[0].real, nominal_columns=evaluators[0].categorical_columns, return_results=True, plot=True, theil_u=True,
+                             mark_columns=True, ax=flat_ax[0], cbar=False, linewidths=0, **kwargs)
+    for i in range(1, nr_plots):
+        cbar = True if i % (nr_plots - 1) == 0 else False
+        fake_corr.append(associations(evaluators[i - 1].fake, nominal_columns=evaluators[0].categorical_columns, return_results=True, plot=True, theil_u=True,
+                                      mark_columns=True, ax=flat_ax[i], cbar=cbar, linewidths=0, **kwargs))
+        if i % (nr_plots - 1) == 0:
+            cbar = flat_ax[i].collections[0].colorbar
+            cbar.ax.tick_params(labelsize=20)
+
+    for i in range(1, nr_plots):
+        cbar = True if i % (nr_plots - 1) == 0 else False
+        diff = abs(real_corr - fake_corr[i - 1])
+        sns.set(style="white")
+        cmap = sns.diverging_palette(220, 10, as_cmap=True)
+        az = sns.heatmap(diff, ax=flat_ax[i + nr_plots], cmap=cmap, vmax=.3, square=True, annot=kwargs.get('annot', True), center=0,
+                         linewidths=0, cbar_kws={"shrink": .8}, cbar=cbar, fmt='.2f')
+        if i % (nr_plots - 1) == 0:
+            cbar = az.collections[0].colorbar
+            cbar.ax.tick_params(labelsize=20)
+
+    titles = ['Real', 'TGAN', 'TGAN-WGAN-GP', 'TGAN-skip', 'MedGAN', 'TableGAN']
+    for i, label in enumerate(titles):
+        flat_ax[i].set_yticklabels([])
+        flat_ax[i].set_xticklabels([])
+        flat_ax[i + nr_plots].set_yticklabels([])
+        flat_ax[i + nr_plots].set_xticklabels([])
+        title_font = {'size': '28'}
+        flat_ax[i].set_title(label, **title_font)
+    plt.tight_layout()
 
 
 def matrix_distance_abs(ma, mb):
@@ -264,7 +301,7 @@ def associations(dataset, nominal_columns=None, mark_columns=False, theil_u=Fals
         cmap = sns.diverging_palette(220, 10, as_cmap=True)
         sns.set(style="white")
         sns.heatmap(corr, annot=kwargs.get('annot', True), fmt=kwargs.get('fmt', '.2f'), cmap=cmap, vmax=1, center=0,
-                    square=True, linewidths=.5, cbar_kws={"shrink": .5}, ax=kwargs.get('ax', None))
+                    square=True, linewidths=kwargs.get('linewidths', 0.5), cbar_kws={"shrink": .8}, cbar=kwargs.get('cbar', True), ax=kwargs.get('ax', None))
         if kwargs.get('ax') is None:
             plt.show()
     if return_results:
@@ -330,6 +367,58 @@ def skip_diag_strided(A):
     return strided(A.ravel()[1:], shape=(m - 1, m), strides=(s0 + s1, s1)).reshape(m, -1)
 
 
+def plot_mean_std_comparison(evaluators):
+    nr_plots = len(evaluators)
+    fig, ax = plt.subplots(2, nr_plots, figsize=(4 * nr_plots, 7))
+    flat_ax = ax.flatten()
+    for i in range(nr_plots):
+        plot_mean_std(evaluators[i].real, evaluators[i].fake, ax=ax[:, i])
+
+    titles = ['TGAN', 'TGAN-WGAN-GP', 'TGAN-skip', 'MedGAN', 'TableGAN']
+    for i, label in enumerate(titles):
+        title_font = {'size': '24'}
+        flat_ax[i].set_title(label, **title_font)
+    plt.tight_layout()
+
+
+def plot_mean_std(real, fake, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(1, 2, figsize=(10, 5))[1]
+        fig.suptitle('Absolute Log Mean and STDs of numeric data\n', fontsize=16)
+
+    real = real._get_numeric_data()
+    fake = fake._get_numeric_data()
+    real_mean = np.log(np.add(abs(real.mean()).values, 1e-5))
+    fake_mean = np.log(np.add(abs(fake.mean()).values, 1e-5))
+    min_mean = min(real_mean) - 1
+    max_mean = max(real_mean) + 1
+    line = np.arange(min_mean, max_mean)
+    sns.lineplot(x=line, y=line, ax=ax[0])
+    sns.scatterplot(x=real_mean,
+                    y=fake_mean,
+                    ax=ax[0])
+    ax[0].set_title('Means of real and fake data')
+    ax[0].set_xlabel('real data mean (log)')
+    ax[0].set_ylabel('fake data mean (log)')
+
+    real_std = np.log(np.add(real.std().values, 1e-5))
+    fake_std = np.log(np.add(fake.std().values, 1e-5))
+    min_std = min(real_std) - 1
+    max_std = max(real_std) + 1
+    line = np.arange(min_std, max_std)
+    sns.lineplot(x=line, y=line, ax=ax[1])
+    sns.scatterplot(x=real_std,
+                    y=fake_std,
+                    ax=ax[1])
+    ax[1].set_title('Stds of real and fake data')
+    ax[1].set_xlabel('real data std (log)')
+    ax[1].set_ylabel('fake data std (log)')
+    ax[0].grid(True)
+    ax[1].grid(True)
+    if ax is None:
+        plt.show()
+
+
 class DataEvaluator:
     def __init__(self, real, fake, unique_thresh=55, metric='pearsonr', verbose=False, n_samples=None):
         if isinstance(real, np.ndarray):
@@ -357,33 +446,7 @@ class DataEvaluator:
         assert len(self.real) == len(self.fake), f'len(real) != len(fake)'
 
     def plot_mean_std(self):
-        fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-        fig.suptitle('Absolute Log Mean and STDs of numeric data\n', fontsize=16)
-
-        real = self.real._get_numeric_data()
-        fake = self.fake._get_numeric_data()
-        real_mean = np.log10(np.add(abs(real.mean()).values, 1e-5))
-        fake_mean = np.log10(np.add(abs(fake.mean()).values, 1e-5))
-        sns.scatterplot(x=real_mean,
-                        y=fake_mean,
-                        ax=ax[0])
-        line = np.arange(min(real_mean + [-5]), max(real_mean + [10]))
-        sns.lineplot(x=line, y=line, ax=ax[0])
-        ax[0].set_title('Means of real and fake data')
-        ax[0].set_xlabel('real data mean (log)')
-        ax[0].set_ylabel('fake data mean (log)')
-
-        real_std = np.log10(np.add(real.std().values, 1e-5))
-        fake_std = np.log10(np.add(fake.std().values, 1e-5))
-        line = np.arange(min(real_std + [-5]), max(real_std + [10]))
-        sns.scatterplot(x=real_std,
-                        y=fake_std,
-                        ax=ax[1])
-        sns.lineplot(x=line, y=line, ax=ax[1])
-        ax[1].set_title('Stds of real and fake data')
-        ax[1].set_xlabel('real data std (log)')
-        ax[1].set_ylabel('fake data std (log)')
-        plt.show()
+        plot_mean_std(self.real, self.fake)
 
     def plot_cumsums(self):
         nr_charts = len(self.real.columns)
@@ -469,20 +532,25 @@ class DataEvaluator:
         return duplicates
 
     def pca_correlation(self):
-        pca_r = PCA(n_components=5)
-        pca_f = PCA(n_components=5)
+        self.pca_r = PCA(n_components=5)
+        self.pca_f = PCA(n_components=5)
 
-        real = numerical_encoding(self.real, nominal_columns=self.categorical_columns)
-        fake = numerical_encoding(self.fake, nominal_columns=self.categorical_columns)
+        # real = self.real.drop(self.categorical_columns, axis=1)
+        # fake = self.fake.drop(self.categorical_columns, axis=1)
+        real = self.real
+        fake = self.fake
 
-        pca_r.fit(real)
-        pca_f.fit(fake)
+        real = numerical_encoding(real, nominal_columns=self.categorical_columns)
+        fake = numerical_encoding(fake, nominal_columns=self.categorical_columns)
+
+        self.pca_r.fit(real)
+        self.pca_f.fit(fake)
         if self.verbose:
-            results = pd.DataFrame({'real': pca_r.explained_variance_, 'fake': pca_f.explained_variance_})
+            results = pd.DataFrame({'real': self.pca_r.explained_variance_, 'fake': self.pca_f.explained_variance_})
             print(f'\nTop 5 PCA components:')
             print(results.to_string())
-        # slope, intersect, corr, p, _ = scipy.stats.linregress(pca_r.explained_variance_, pca_f.explained_variance_)
-        pca_error = mean_absolute_percentage_error(pca_r.explained_variance_,  pca_f.explained_variance_)
+        # slope, intersect, corr, p, _ = stats.linregress(pca_r.explained_variance_, pca_f.explained_variance_)
+        pca_error = mean_absolute_percentage_error(self.pca_r.explained_variance_, self.pca_f.explained_variance_)
         return 1 - pca_error
 
     def fit_estimators(self):
@@ -574,7 +642,7 @@ class DataEvaluator:
             ds = getattr(self, ds_name)
             corr_df = associations(ds, nominal_columns=self.categorical_columns, return_results=True, theil_u=True, plot=False)
             values = corr_df.values
-            values = values[~np.eye(values.shape[0], dtype=bool)].reshape(values.shape[0],-1)
+            values = values[~np.eye(values.shape[0], dtype=bool)].reshape(values.shape[0], -1)
             total_metrics[ds_name] = values.flatten()
 
         self.correlation_correlations = total_metrics
@@ -583,6 +651,18 @@ class DataEvaluator:
             print('\nColumn correlation between datasets:')
             print(total_metrics.to_string())
         return corr
+
+    def convert_numerical(self):
+        real = numerical_encoding(self.real, nominal_columns=self.categorical_columns)
+
+        columns = sorted(real.columns.tolist())
+        real = real[columns]
+        fake = numerical_encoding(self.fake, nominal_columns=self.categorical_columns)
+        for col in columns:
+            if col not in fake.columns.tolist():
+                fake[col] = 0
+        fake = fake[columns]
+        return real, fake
 
     def estimator_evaluation(self, target_col, target_type='class'):
         self.target_col = target_col
@@ -627,13 +707,12 @@ class DataEvaluator:
             self.estimators = [
                 # SGDClassifier(max_iter=100, tol=1e-3),
                 LogisticRegression(multi_class='auto', solver='lbfgs', max_iter=500),
-                RandomForestClassifier(),
+                RandomForestClassifier(n_estimators=10),
                 DecisionTreeClassifier(),
                 MLPClassifier([50, 50], solver='adam', activation='relu', learning_rate='adaptive'),
             ]
         else:
             raise Exception(f'target_type must be \'regr\' or \'class\'')
-
 
         self.r_estimators = copy.deepcopy(self.estimators)
         self.f_estimators = copy.deepcopy(self.estimators)
@@ -645,7 +724,6 @@ class DataEvaluator:
 
         self.fit_estimators()
         self.estimators_scores = self.score_estimators()
-        # if self.verbose:
         print('\nClassifier F1-scores:') if self.target_type == 'class' else print('\nRegressor MSE-scores:')
         print(self.estimators_scores.to_string())
         if self.target_type == 'regr':
