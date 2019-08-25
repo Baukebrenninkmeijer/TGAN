@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 from scipy import stats
 from scipy.spatial.distance import cdist
 from dython.nominal import *
@@ -441,8 +442,8 @@ class DataEvaluator:
             self.n_samples = n_samples
         else:
             raise Exception(f'Make sure n_samples < len(fake/real). len(real): {len(real)}, len(fake): {len(fake)}')
-        self.real = self.real.sample(self.n_samples)
-        self.fake = self.fake.sample(self.n_samples)
+        self.real = self.real[:self.n_samples]
+        self.fake = self.fake[:self.n_samples]
         assert len(self.real) == len(self.fake), f'len(real) != len(fake)'
 
     def plot_mean_std(self):
@@ -522,11 +523,31 @@ class DataEvaluator:
         ax[1].set_title('Fake data')
         plt.show()
 
-    def get_duplicates(self):
+    def get_copies(self):
         """
         Check whether any real values occur in the fake data
         :return: Dataframe containing the duplicates
         """
+        # df = pd.concat([self.real, self.fake])
+        # duplicates = df[df.duplicated(keep=False)]
+        # return duplicates
+        real_hashes = self.real.apply(lambda x: hash(tuple(x)), axis=1)
+        fake_hashes = self.fake.apply(lambda x: hash(tuple(x)), axis=1)
+        dup_idxs = fake_hashes.isin(real_hashes.values)
+        dup_idxs = dup_idxs[dup_idxs == True].sort_index().index.tolist()
+        len(dup_idxs)
+        print(f'Nr copied columns: {len(dup_idxs)}')
+
+        return self.fake.loc[dup_idxs, :]
+
+    def get_duplicates(self, return_values=False):
+        real_duplicates = self.real[self.real.duplicated(keep=False)]
+        fake_duplicates = self.fake[self.fake.duplicated(keep=False)]
+        if return_values:
+            return real_duplicates, fake_duplicates
+        return len(real_duplicates), len(fake_duplicates)
+
+    def get_duplicates2(self, return_values=False):
         df = pd.concat([self.real, self.fake])
         duplicates = df[df.duplicated(keep=False)]
         return duplicates
@@ -590,14 +611,14 @@ class DataEvaluator:
             results = pd.DataFrame({'real': r2r + r2f, 'fake': f2r + f2f}, index=index)
 
         elif self.target_type == 'regr':
-            r2r = [mean_squared_error(self.real_y_test, clf.predict(self.real_x_test)) for clf in self.r_estimators]
-            f2f = [mean_squared_error(self.fake_y_test, clf.predict(self.fake_x_test)) for clf in self.f_estimators]
+            r2r = [rmse(self.real_y_test, clf.predict(self.real_x_test)) for clf in self.r_estimators]
+            f2f = [rmse(self.fake_y_test, clf.predict(self.fake_x_test)) for clf in self.f_estimators]
 
             # Calculate test set accuracies on the other dataset
             r2f = [rmse(self.fake_y_test, clf.predict(self.fake_x_test)) for clf in self.r_estimators]
             f2r = [rmse(self.real_y_test, clf.predict(self.real_x_test)) for clf in self.f_estimators]
-            index = [f'real_data_{classifier}_F1' for classifier in self.estimator_names] + \
-                    [f'fake_data_{classifier}_F1' for classifier in self.estimator_names]
+            index = [f'real_data_{classifier}' for classifier in self.estimator_names] + \
+                    [f'fake_data_{classifier}' for classifier in self.estimator_names]
             results = pd.DataFrame({'real': r2r + r2f, 'fake': f2r + f2f}, index=index)
         else:
             raise Exception(f'self.target_type should be either \'class\' or \'regr\', but is {self.target_type}.')
@@ -633,7 +654,7 @@ class DataEvaluator:
         if self.verbose:
             print('\nBasic statistical attributes:')
             print(total_metrics.to_string())
-        corr, p = stats.kendalltau(total_metrics['real'], total_metrics['fake'])
+        corr, p = stats.spearmanr(total_metrics['real'], total_metrics['fake'])
         return corr
 
     def correlation_correlation(self):
@@ -800,7 +821,7 @@ class DataEvaluator:
             'basic statistics': basic_statistical,
             'Correlation column correlations': correlation_correlation,
             'Mean Correlation between fake and real columns': column_correlation,
-            '1 - MAPE Estimator results': estimators,
+            f'{"1 - MAPE Estimator results" if self.target_type == "class" else "Correlation RMSE"}': estimators,
             '1 - MAPE 5 PCA components': pca_variance,
         }
         total_result = np.mean(list(all_results.values()))
