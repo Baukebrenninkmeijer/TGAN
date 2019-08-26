@@ -570,8 +570,10 @@ class DataEvaluator:
             results = pd.DataFrame({'real': self.pca_r.explained_variance_, 'fake': self.pca_f.explained_variance_})
             print(f'\nTop 5 PCA components:')
             print(results.to_string())
-        # slope, intersect, corr, p, _ = stats.linregress(pca_r.explained_variance_, pca_f.explained_variance_)
-        pca_error = mean_absolute_percentage_error(self.pca_r.explained_variance_, self.pca_f.explained_variance_)
+        # slope, intersect, corr, p, _ = stats.linregress(self.pca_r.explained_variance_, self.pca_f.explained_variance_)
+        # corr, p = stats.pearsonr(self.pca_r.explained_variance_, self.pca_f.explained_variance_)
+        # return corr
+        pca_error = mean_absolute_percentage_error(np.log(self.pca_r.explained_variance_), np.log(self.pca_f.explained_variance_))
         return 1 - pca_error
 
     def fit_estimators(self):
